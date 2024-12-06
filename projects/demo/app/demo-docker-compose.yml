@@ -1,0 +1,25 @@
+services:
+  frontend:
+    build: 
+      context: ./frontend
+      args:
+        DEMO_FRONTEND_PORT: ${DEMO_FRONTEND_PORT}
+        INDEXER_PORT: ${INDEXER_PORT}
+        VITE_PROGRAM_PUBKEY: ${VITE_PROGRAM_PUBKEY}
+        VITE_WALL_ACCOUNT_PUBKEY: ${VITE_WALL_ACCOUNT_PUBKEY}
+        VITE_RPC_URL: ${VITE_RPC_URL}
+    environment:
+      - DEMO_FRONTEND_PORT=${DEMO_FRONTEND_PORT}
+      - INDEXER_PORT=${INDEXER_PORT}
+      - VITE_PROGRAM_PUBKEY=${VITE_PROGRAM_PUBKEY}
+      - VITE_WALL_ACCOUNT_PUBKEY=${VITE_WALL_ACCOUNT_PUBKEY}
+      - VITE_RPC_URL=${VITE_RPC_URL}
+    ports:
+      - "${DEMO_FRONTEND_PORT}:${DEMO_FRONTEND_PORT}"
+    networks:
+      - arch-network
+
+networks:
+  arch-network:
+    # external: true
+    name: arch-cli_arch-network
