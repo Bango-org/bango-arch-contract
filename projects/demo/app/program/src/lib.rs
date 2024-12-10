@@ -1,9 +1,5 @@
 use arch_program::{
-    account::AccountInfo,
-    entrypoint, msg,
-    program::{get_bitcoin_block_height, next_account_info, validate_utxo_ownership},
-    program_error::ProgramError,
-    pubkey::Pubkey,
+    account::AccountInfo, bitcoin::hex::DisplayHex, entrypoint, msg, program::{get_bitcoin_block_height, next_account_info, validate_utxo_ownership}, program_error::ProgramError, pubkey::Pubkey
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 
@@ -24,7 +20,7 @@ pub struct Outcome {
 pub struct PredictionEvent {
     pub unique_id: [u8; 32],
     pub creator: Pubkey,
-    pub expiry_timestamp: i64,
+    pub expiry_timestamp: u32,
     pub outcomes: Vec<Outcome>,
     pub total_pool_amount: u64,
     pub status: EventStatus,
@@ -43,7 +39,7 @@ pub struct Bet {
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
 pub struct PredictionEventParams {
     pub unique_id: [u8; 32],
-    pub expiry_timestamp: i64,
+    pub expiry_timestamp: u32,
     pub num_outcomes: u8,
 }
 
@@ -81,6 +77,18 @@ pub fn process_instruction(
 
     msg!("Hello1");
 
+    // let unique_id_bytes: &[u8] = &instruction_data[0..32];
+    // let extracted_string = String::from_utf8_lossy(unique_id_bytes).to_string();
+
+
+    // let timestamp_bytes: &[u8] = &instruction_data[32..36]; // u32 is 4 bytes, starts at index 32
+    // let timestamp = u32::from_le_bytes(timestamp_bytes.try_into().expect("Invalid u32 slice"));
+
+    // let num_of_outcomes = &instruction_data[36];
+
+    // msg!("title {}, timestamp: {}, outcomes: {}", extracted_string,timestamp, num_of_outcomes);
+
+
     if !creator_account.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
@@ -89,6 +97,7 @@ pub fn process_instruction(
     let params = PredictionEventParams::try_from_slice(instruction_data)
         .map_err(|_| ProgramError::InvalidInstructionData)?;
 
+    msg!("timestamp: {}",  params.expiry_timestamp);
     msg!("Hello3");
 
     let mut outcomes = Vec::new();
@@ -102,18 +111,28 @@ pub fn process_instruction(
 
     let event = PredictionEvent {
         unique_id: params.unique_id,
-        creator: *creator_account.key,
+        creator: creator_account.key.clone(),
         expiry_timestamp: params.expiry_timestamp,
         outcomes: outcomes,
         total_pool_amount: 0,
         status: EventStatus::Active,
         winning_outcome: None,
     };
+ 
     msg!("Hello5");
 
-    event
-        .serialize(&mut *event_account.data.borrow_mut())
-        .map_err(|_| ProgramError::InvalidAccountData)?;
+    
+    let serialized_data = borsh::to_vec(&event).map_err(|_| ProgramError::BorshIoError(String::from("Serailization failed")))?;
+    let required_len = serialized_data.len();
+    msg!("Serlized ddata length {}", required_len);
+
+    if event_account.data_len() < required_len {
+        event_account.realloc(required_len + 10, false)?;
+    }
+
+    msg!("account size {}", event_account.data_len());
+
+    event_account.data.borrow_mut()[..required_len].copy_from_slice(&serialized_data);
 
     msg!("Hello6");
 

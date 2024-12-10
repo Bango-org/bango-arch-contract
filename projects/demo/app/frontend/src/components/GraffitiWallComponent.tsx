@@ -353,26 +353,25 @@ const GraffitiWallComponent: React.FC = () => {
   // Serialize create event instruction
   const serializeCreateEventInstruction = (
     unique_id: Uint8Array,
-    expiry_timestamp: bigint,
+    expiry_timestamp: number,
     num_outcomes: number
-  ): number[] => {
+  ): Uint8Array => {
     const schema = {
       struct: {
-        variant: 'u8',
         unique_id: { array: { type: 'u8', len: 32 } },
-        expiry_timestamp: 'i64',
+        expiry_timestamp: 'u32',
         num_outcomes: 'u8',
       }
     };
+    
 
     const data = {
-      variant: 0, // CreateEvent variant
       unique_id: Array.from(unique_id),
       expiry_timestamp,
       num_outcomes,
     };
 
-    return Array.from(borsh.serialize(schema, data));
+    return borsh.serialize(schema, data);
   };
 
   const expiryTimestamp = 1689422272;
@@ -386,15 +385,23 @@ const GraffitiWallComponent: React.FC = () => {
     }
 
     try {
-      const uniqueId = new Uint8Array(32); // Fill with your ID bytes
-      const expiryTimestamp = BigInt(Date.now() + 86400000); // 24 hours from now
-      const numOutcomes = 2;
+      const uniqueId = new Uint8Array(32).fill(0); // Fill with your ID bytes
+      const uniqueIdBytes = new TextEncoder().encode("dasdasdlkqwhjddsasdadadadadaaaad");
+      uniqueId.set(uniqueIdBytes.slice(0, 32));
+
+        
+      const expiryTimestamp = 1689422272; // 24 hours from now
+      const numOutcomes = 3;
 
       const data = serializeCreateEventInstruction(
         uniqueId,
         expiryTimestamp,
         numOutcomes
       );
+
+      
+
+      console.log("arr2:",data)
 
       const instruction: Instruction = {
         program_id: PubkeyUtil.fromHex(PROGRAM_PUBKEY),
@@ -410,7 +417,7 @@ const GraffitiWallComponent: React.FC = () => {
             is_writable: false
           }
         ],
-        data: new Uint8Array(data),
+        data: data,
       };
 
       const messageObj: Message = {
