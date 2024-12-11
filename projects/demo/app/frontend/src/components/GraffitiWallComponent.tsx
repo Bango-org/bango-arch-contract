@@ -13,81 +13,6 @@ const client = new RpcConnection((import.meta as any).env.VITE_RPC_URL || 'http:
 const PROGRAM_PUBKEY = (import.meta as any).env.VITE_PROGRAM_PUBKEY;
 const WALL_ACCOUNT_PUBKEY = (import.meta as any).env.VITE_WALL_ACCOUNT_PUBKEY;
 
-class GraffitiMessage {
-  constructor(
-    public timestamp: number,
-    public name: string,
-    public message: string
-  ) { }
-
-  static schema = new Map([
-    [
-      GraffitiMessage,
-      {
-        kind: 'struct',
-        fields: [
-          ['timestamp', 'i64'],
-          ['name', ['u8', 16]],
-          ['message', ['u8', 64]]
-        ]
-      }
-    ]
-  ]);
-}
-
-// Define the schema for the wall containing messages
-class GraffitiWall {
-  constructor(public messages: GraffitiMessage[]) { }
-
-  static schema = new Map([
-    [
-      GraffitiWall,
-      {
-        kind: 'struct',
-        fields: [
-          ['messages', [GraffitiMessage]]
-        ]
-      }
-    ]
-  ]);
-}
-
-
-
-
-// Enum for EventStatus
-enum EventStatus {
-  Active = 0,
-  Resolved = 1,
-  Cancelled = 2
-}
-
-// Interface for Outcome
-interface Outcome {
-  id: number;
-  total_amount: bigint;
-}
-
-// Interface for PredictionEvent
-interface PredictionEvent {
-  unique_id: Uint8Array;
-  creator: Uint8Array;
-  expiry_timestamp: bigint;
-  outcomes: Outcome[];
-  total_pool_amount: bigint;
-  status: EventStatus;
-  winning_outcome: number | null;
-}
-
-// Interface for Bet
-interface Bet {
-  user: Uint8Array;
-  event_id: Uint8Array;
-  outcome_id: number;
-  amount: bigint;
-  timestamp: bigint;
-}
-
 
 const GraffitiWallComponent: React.FC = () => {
   // State management
@@ -95,7 +20,6 @@ const GraffitiWallComponent: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isAccountCreated, setIsAccountCreated] = useState(false);
   const [isProgramDeployed, setIsProgramDeployed] = useState(false);
-  const [wallData, setWallData] = useState<GraffitiMessage[]>([]);
 
   // Form state
   const [message, setMessage] = useState('');
@@ -105,20 +29,6 @@ const GraffitiWallComponent: React.FC = () => {
 
   // Convert account pubkey once
   const accountPubkey = PubkeyUtil.fromHex(WALL_ACCOUNT_PUBKEY);
-
-  const schema = {
-    struct: {
-      messages: {
-        seq: {
-          struct: {
-            timestamp: 'i64',
-            name: { array: { type: 'u8', len: 16 } },
-            message: { array: { type: 'u8', len: 64 } }
-          }
-        }
-      }
-    }
-  };
 
   // Utility Functions
   const copyToClipboard = () => {
@@ -158,64 +68,7 @@ const GraffitiWallComponent: React.FC = () => {
     }
   }, []);
 
-  // Fetch and parse wall messages
-  const fetchWallData = useCallback(async () => {
-    try {
-      const userAccount = await client.readAccountInfo(accountPubkey);
-      if (!userAccount) {
-        setError('Account not found.');
-        return;
-      }
-      const wallData = userAccount.data;
-
-      console.log(`Wall data: ${wallData}`);
-
-      // If data is empty or invalid length, just set empty messages without error
-      if (!wallData || wallData.length < 4) {
-        setWallData([]);
-        setError(null); // Clear any existing errors
-        return;
-      }
-
-      // Deserialize the wall data using borsh
-      // Read data directly from the buffer
-      const messages = [];
-      let offset = 0;
-
-      // First 4 bytes are the array length
-      const messageCount = new DataView(wallData.buffer).getUint32(offset, true);
-      offset += 4;
-
-      for (let i = 0; i < messageCount; i++) {
-        // Read timestamp (8 bytes)
-        const timestamp = new DataView(wallData.buffer).getBigInt64(offset, true);
-        offset += 8;
-
-        // Read name (16 bytes)
-        const nameBytes = wallData.slice(offset, offset + 16);
-        const name = new TextDecoder().decode(nameBytes.filter(x => x !== 0));
-        offset += 16;
-
-        // Read message (64 bytes)
-        const messageBytes = wallData.slice(offset, offset + 64);
-        const message = new TextDecoder().decode(messageBytes.filter(x => x !== 0));
-        offset += 64;
-
-        messages.push(new GraffitiMessage(
-          Number(timestamp),
-          name,
-          message
-        ));
-      }
-
-      messages.sort((a, b) => b.timestamp - a.timestamp);
-
-      setWallData(messages);
-    } catch (error) {
-      console.error('Error fetching wall data:', error);
-      setError(`Failed to fetch wall data: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }, []);
+  
 
   // Initialize component
   useEffect(() => {
@@ -223,15 +76,7 @@ const GraffitiWallComponent: React.FC = () => {
     checkAccountCreated();
   }, [checkAccountCreated, checkProgramDeployed]);
 
-  // Set up polling for wall data
-  useEffect(() => {
-    if (!isAccountCreated) return;
-
-    fetchWallData();
-    const interval = setInterval(fetchWallData, 5000);
-    return () => clearInterval(interval);
-  }, [isAccountCreated, fetchWallData]);
-
+  
   // Message handlers
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newName = e.target.value;
@@ -253,102 +98,6 @@ const GraffitiWallComponent: React.FC = () => {
     }
   };
 
-  const handleAddToWall = async () => {
-    if (!message.trim() || !name.trim() || !isAccountCreated || !wallet.isConnected) {
-      setError("Name and message are required, account must be created, and wallet must be connected.");
-      return;
-    }
-
-    try {
-      const data = serializeGraffitiData(name, message);
-
-      const instruction: Instruction = {
-        program_id: PubkeyUtil.fromHex(PROGRAM_PUBKEY),
-        accounts: [
-          {
-            pubkey: PubkeyUtil.fromHex(wallet.publicKey!),
-            is_signer: true,
-            is_writable: false
-          },
-          {
-            pubkey: accountPubkey,
-            is_signer: false,
-            is_writable: true
-          },
-        ],
-        data: new Uint8Array(data),
-      };
-
-      const messageObj: Message = {
-        signers: [PubkeyUtil.fromHex(wallet.publicKey!)],
-        instructions: [instruction],
-      };
-
-      console.log(`Pubkey: ${PubkeyUtil.fromHex(wallet.publicKey!)}`);
-      const messageBytes = MessageUtil.serialize(messageObj);
-      console.log(`Message hash: ${MessageUtil.hash(messageObj).toString()}`);
-      const signature = await wallet.signMessage(Buffer.from(MessageUtil.hash(messageObj)).toString('hex'));
-      console.log(`Signature: ${signature}`);
-
-      // Take last 64 bytes of base64 decoded signature
-      const signatureBytes = new Uint8Array(Buffer.from(signature, 'base64')).slice(2);
-      console.log(`Signature bytes: ${signatureBytes}`);
-
-      const result = await client.sendTransaction({
-        version: 0,
-        signatures: [signatureBytes],
-        message: messageObj,
-      });
-
-      if (result) {
-        await fetchWallData();
-        setMessage('');
-        setName('');
-      }
-    } catch (error) {
-      console.error('Error adding to wall:', error);
-      setError(`Failed to add to wall: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  };
-
-  const serializeGraffitiData = (name: string, message: string): number[] => {
-    // Create fixed-size arrays
-    const nameArray = new Uint8Array(16).fill(0);
-    const messageArray = new Uint8Array(64).fill(0);
-
-    // Convert strings to bytes
-    const nameBytes = new TextEncoder().encode(name);
-    const messageBytes = new TextEncoder().encode(message);
-
-    // Copy bytes into fixed-size arrays (will truncate if too long)
-    nameArray.set(nameBytes.slice(0, 16));
-    messageArray.set(messageBytes.slice(0, 64));
-
-    // Create the params object matching the Rust struct
-    const params = {
-      name: Array.from(nameArray),
-      message: Array.from(messageArray)
-    };
-
-    // Define the schema for borsh serialization
-    const schema = {
-      struct: {
-        name: { array: { type: 'u8', len: 16 } },
-        message: { array: { type: 'u8', len: 64 } }
-      }
-    };
-
-    return Array.from(borsh.serialize(schema, params));
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      if (isFormValid) {
-        handleAddToWall();
-      }
-    }
-  };
 
   // Serialize create event instruction
   const serializeCreateEventInstruction = (
@@ -358,6 +107,7 @@ const GraffitiWallComponent: React.FC = () => {
   ): Uint8Array => {
     const schema = {
       struct: {
+        function_number: 'u8',
         unique_id: { array: { type: 'u8', len: 32 } },
         expiry_timestamp: 'u32',
         num_outcomes: 'u8',
@@ -366,6 +116,7 @@ const GraffitiWallComponent: React.FC = () => {
     
 
     const data = {
+      function_number: 1,
       unique_id: Array.from(unique_id),
       expiry_timestamp,
       num_outcomes,
@@ -386,7 +137,7 @@ const GraffitiWallComponent: React.FC = () => {
 
     try {
       const uniqueId = new Uint8Array(32).fill(0); // Fill with your ID bytes
-      const uniqueIdBytes = new TextEncoder().encode("dasdasdlkqwhjddsasdadadadadaaaad");
+      const uniqueIdBytes = new TextEncoder().encode("dasdasdlkqwhjddsasdadadadadaaaaa");
       uniqueId.set(uniqueIdBytes.slice(0, 32));
 
         
@@ -442,6 +193,72 @@ const GraffitiWallComponent: React.FC = () => {
   };
 
 
+  const handleCloseEvent = async () => {
+    if (!wallet.isConnected) {
+      setError("Wallet must be connected");
+      return;
+    }
+
+    try {
+      const uniqueId = new Uint8Array(32).fill(0); // Fill with your ID bytes
+      const uniqueIdBytes = new TextEncoder().encode("dasdasdlkqwhjddsasdadadadadaaaaa");
+      uniqueId.set(uniqueIdBytes.slice(0, 32));
+
+      const schema = {
+        struct: {
+          function_number: 'u8',
+          unique_id: { array: { type: 'u8', len: 32 } },
+        }
+      };
+      
+      let data = {
+        function_number: 2,
+        unique_id: Array.from(uniqueId),
+      };
+      
+      let serialData = borsh.serialize(schema, data);
+      
+      const instruction: Instruction = {
+        program_id: PubkeyUtil.fromHex(PROGRAM_PUBKEY),
+        accounts: [
+          {
+            pubkey: accountPubkey,
+            is_signer: false,
+            is_writable: true
+          },
+          {
+            pubkey: PubkeyUtil.fromHex(wallet.publicKey!),
+            is_signer: true,
+            is_writable: false
+          }
+        ],
+        data: serialData,
+      };
+
+      const messageObj: Message = {
+        signers: [PubkeyUtil.fromHex(wallet.publicKey!)],
+        instructions: [instruction],
+      };
+
+      const messageHash = MessageUtil.hash(messageObj);
+      const signature = await wallet.signMessage(Buffer.from(messageHash).toString('hex'));
+      const signatureBytes = new Uint8Array(Buffer.from(signature, 'base64')).slice(2);
+
+      const result = await client.sendTransaction({
+        version: 0,
+        signatures: [signatureBytes],
+        message: messageObj,
+      });
+
+      console.log(result);
+
+    } catch (error) {
+      console.error('Error creating event:', error);
+      setError(`Failed to create event: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
+
   const fetchEventData = useCallback(async () => {
     try {
       const account = await client.readAccountInfo(accountPubkey);
@@ -453,20 +270,31 @@ const GraffitiWallComponent: React.FC = () => {
       const eventData = borsh.deserialize(
         {
           struct: {
-            unique_id: { array: { type: 'u8', len: 32 } },
-            creator: { array: { type: 'u8', len: 32 } },
-            expiry_timestamp: 'i64',
-            outcomes: {
+            total_predictions: 'u32',
+            predictions: {
               array: {
-                struct: {
-                  id: 'u8',
-                  total_amount: 'u64'
+                type: {
+                  struct: {
+                    unique_id: { array: { type: 'u8', len: 32 } },
+                    creator: { array: { type: 'u8', len: 32 } }, // Pubkey is [u8; 32]
+                    expiry_timestamp: 'u32',
+                    outcomes: {
+                      array: {
+                        type: {
+                          struct: {
+                            id: 'u8',
+                            total_amount: 'u64'
+                          }
+                        }
+                      }
+                    },
+                    total_pool_amount: 'u64',
+                    status: 'u8', // EventStatus enum as u8
+                    winning_outcome: { option: 'u8' }
+                  }
                 }
               }
-            },
-            total_pool_amount: 'u64',
-            status: 'u8',
-            winning_outcome: { option: 'u8' }
+            }
           }
         },
         account.data
@@ -540,7 +368,7 @@ const GraffitiWallComponent: React.FC = () => {
               <textarea
                 value={message}
                 onChange={handleMessageChange}
-                onKeyDown={handleKeyDown}
+                onKeyDown={()=> {}}
                 placeholder="Your Message (required, max 64 bytes)"
                 className="w-full px-3 py-2 bg-arch-gray text-arch-white rounded-md focus:outline-none focus:ring-2 focus:ring-arch-orange mb-2"
                 required
@@ -555,14 +383,20 @@ const GraffitiWallComponent: React.FC = () => {
               >
                 Create Predition
               </button>
-
               <button
-                onClick={fetchEventData}
+                onClick={handleCloseEvent}
                 className={`w-full font-bold py-2 px-4 rounded-lg transition duration-300 ${isFormValid
                   ? 'bg-arch-orange text-arch-black hover:bg-arch-white hover:text-arch-orange'
                   : 'bg-gray-500 text-gray-300 cursor-not-allowed'
                   }`}
                 disabled={!isFormValid}
+              >
+                Close Predition
+              </button>
+
+              <button
+                onClick={fetchEventData}
+                className={`w-full font-bold py-2 px-4 rounded-lg transition duration-300 bg-arch-orange text-arch-black hover:bg-arch-white hover:text-arch-orange`}
               >
                 Fetch Event
               </button>
@@ -573,12 +407,7 @@ const GraffitiWallComponent: React.FC = () => {
             <div className="bg-arch-black p-6 rounded-lg">
               <h3 className="text-2xl font-bold mb-4 text-arch-white">Wall Messages</h3>
               <div className="space-y-4 max-h-96 overflow-y-auto">
-                {wallData.map((item, index) => (
-                  <div key={index} className="bg-arch-gray p-3 rounded-lg">
-                    <p className="font-bold text-arch-orange">{new Date(item.timestamp * 1000).toLocaleString()}</p>
-                    <p className="text-arch-white"><span className="font-semibold">{item.name}:</span> {item.message}</p>
-                  </div>
-                ))}
+                
               </div>
             </div>
           </div>

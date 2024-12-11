@@ -57,19 +57,22 @@ pub struct Bet {
 }
 
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+pub struct Predictions {
+    pub total_predictions: u32,
+    pub predictions: Vec<PredictionEvent>,
+}
+
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
 pub struct PredictionEventParams {
     pub unique_id: [u8; 32],
     pub expiry_timestamp: u32,
     pub num_outcomes: u8,
 }
 
-
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
-pub struct Predictions {
-    pub total_predictions: u32,
-    pub predictions: Vec<PredictionEvent>,
+pub struct ClosePredictionEventParams {
+    pub unique_id: [u8; 32],
 }
-
 
 entrypoint!(process_instruction);
 
@@ -91,20 +94,34 @@ pub fn process_instruction(
             let params = PredictionEventParams::try_from_slice(&instruction_data[1..])
                 .map_err(|_| ProgramError::InvalidInstructionData)?;
 
-            let res = process_create_event(program_id, accounts, params.unique_id, params.expiry_timestamp, params.num_outcomes);
+            let res = process_create_event(
+                accounts,
+                params.unique_id,
+                params.expiry_timestamp,
+                params.num_outcomes,
+            );
 
             res
-        },
-
-        _ => {
-            Err(ProgramError::BorshIoError(String::from("Invalid function call")))
         }
+
+        2 => {
+            msg!("Instruction: CloseEvent");
+
+            let params = ClosePredictionEventParams::try_from_slice(&instruction_data[1..])
+                .map_err(|_| ProgramError::InvalidInstructionData)?;
+
+            let res = process_close_event(accounts, params.unique_id);
+
+            res
+        }
+
+        _ => Err(ProgramError::BorshIoError(String::from(
+            "Invalid function call",
+        ))),
     }
 }
 
-
 pub fn process_create_event(
-    program_id: &Pubkey,
     accounts: &[AccountInfo],
     unique_id: [u8; 32],
     expiry_timestamp: u32,
@@ -144,69 +161,39 @@ pub fn process_create_event(
     predictions_data.predictions.push(event);
     predictions_data.total_predictions += 1;
 
-
-    let serialized_data = borsh::to_vec(&predictions_data)
-        .map_err(|_| ProgramError::BorshIoError(String::from("Serailization failed")))?;
-    let required_len = serialized_data.len();
-    msg!("Serlized data length {}", required_len);
-
-    if event_account.data_len() < required_len {
-        event_account.realloc(required_len, false)?;
-    }
-
-    msg!("account size {}", event_account.data_len());
-
-    event_account.data.borrow_mut()[..required_len].copy_from_slice(&serialized_data);
-
-    Ok(())
+    helper_store_predictions(event_account, predictions_data)
 }
 
 pub fn process_close_event(
-    program_id: &Pubkey,
     accounts: &[AccountInfo],
     unique_id: [u8; 32],
 ) -> Result<(), ProgramError> {
-
     let accounts_iter = &mut accounts.iter();
     let event_account = next_account_info(accounts_iter)?;
     let creator_account = next_account_info(accounts_iter)?;
-
 
     if !creator_account.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-
     let data = event_account.try_borrow_mut_data()?;
     let mut predictions_data = helper_deserialize_predictions(data)?;
 
-    let index = predictions_data.predictions.iter().position(|x| x.unique_id == unique_id).unwrap();
+    let index = predictions_data
+        .predictions
+        .iter()
+        .position(|x| x.unique_id == unique_id)
+        .unwrap();
 
     predictions_data.predictions[index].status = EventStatus::Closed;
     predictions_data.total_predictions -= 1;
 
-    let serialized_data = borsh::to_vec(&predictions_data)
-        .map_err(|_| ProgramError::BorshIoError(String::from("Serailization failed")))?;
-    let required_len = serialized_data.len();
-    msg!("Serlized data length {}", required_len);
-
-    if event_account.data_len() < required_len {
-        event_account.realloc(required_len, false)?;
-    }
-
-    msg!("account size {}", event_account.data_len());
-
-    event_account.data.borrow_mut()[..required_len].copy_from_slice(&serialized_data);
-
-
-    Ok(())
-
-
+    helper_store_predictions(event_account, predictions_data)
 }
 
-
-pub fn helper_deserialize_predictions(data:  RefMut<'_, &mut [u8]>) -> Result<Predictions, ProgramError> {
-
+pub fn helper_deserialize_predictions(
+    data: RefMut<'_, &mut [u8]>,
+) -> Result<Predictions, ProgramError> {
     let predictions_data = if data.len() > 0 {
         Predictions::try_from_slice(&data).map_err(|e| {
             msg!("Error: Failed to deserialize event data {}", e.to_string());
@@ -214,18 +201,33 @@ pub fn helper_deserialize_predictions(data:  RefMut<'_, &mut [u8]>) -> Result<Pr
         })?
     } else {
         Predictions {
-            total_predictions: 1,
-            predictions: Vec::new()
+            total_predictions: 0,
+            predictions: Vec::new(),
         }
     };
-
 
     Ok(predictions_data)
 }
 
+pub fn helper_store_predictions(
+    event_account: &AccountInfo<'_>,
+    predictions_data: Predictions,
+) -> Result<(), ProgramError> {
+    let serialized_data = borsh::to_vec(&predictions_data)
+        .map_err(|_| ProgramError::BorshIoError(String::from("Serailization failed")))?;
+    let required_len = serialized_data.len();
+    msg!("Serlized data length {}", required_len);
 
+    if event_account.data_len() < required_len {
+        event_account.realloc(required_len, false)?;
+    }
 
+    msg!("account size {}", event_account.data_len());
 
+    event_account.data.borrow_mut()[..required_len].copy_from_slice(&serialized_data);
+
+    Ok(())
+}
 
 // pub fn process_place_bet(
 //     program_id: &Pubkey,
