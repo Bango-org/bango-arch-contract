@@ -1,66 +1,49 @@
-block hash: Ok("9f155512e6aa5113a70b488b83d85d13b2faf2187ff1b42a03b3a8ab3f40dad3")
-2024-12-23 12:20:53 2024-12-23T06:50:53.619901Z  INFO local_validator: local_validator/src/main.rs:118: slot 615
-2024-12-23 12:20:54 2024-12-23T06:50:54.036588Z  INFO local_validator: local_validator/src/main.rs:146: block Block { transactions: [], previous_block_hash: "9f155512e6aa5113a70b488b83d85d13b2faf2187ff1b42a03b3a8ab3f40dad3", timestamp: 1734936654036, bitcoin_block_height: 79637, transaction_count: 0, merkle_root: "0000000000000000000000000000000000000000000000000000000000000000" }
-2024-12-23 12:20:54 2024-12-23T06:50:54.036709Z  INFO local_validator: local_validator/src/main.rs:147: runtime_txs []
-2024-12-23 12:20:54 2024-12-23T06:50:54.037303Z  INFO local_validator: local_validator/src/main.rs:194: processed_transactions before rollback []
-2024-12-23 12:20:54 2024-12-23T06:50:54.037358Z  INFO local_validator: local_validator/src/main.rs:215: processed_transactions []
-2024-12-23 12:20:54 2024-12-23T06:50:54.037407Z  INFO db_core::db::rocks: db_core/src/db/rocks.rs:468: block hash: Ok("4467483773890b856ef121579001270a75abfe3e7fb893de1a08411a51693f98")
-2024-12-23 12:20:54 2024-12-23T06:50:54.239756Z  INFO local_validator: local_validator/src/main.rs:118: slot 616
-2024-12-23 12:20:54 2024-12-23T06:50:54.659094Z  INFO local_validator: local_validator/src/main.rs:146: block Block { transactions: [], previous_block_hash: "4467483773890b856ef121579001270a75abfe3e7fb893de1a08411a51693f98", timestamp: 1734936654659, bitcoin_block_height: 79637, transaction_count: 0, merkle_root: "0000000000000000000000000000000000000000000000000000000000000000" }
-2024-12-23 12:20:54 2024-12-23T06:50:54.659142Z  INFO local_validator: local_validator/src/main.rs:147: runtime_txs []
-2024-12-23 12:20:54 2024-12-23T06:50:54.659197Z  INFO local_validator: local_validator/src/main.rs:194: processed_transactions before rollback []
-2024-12-23 12:20:54 2024-12-23T06:50:54.659203Z  INFO local_validator: local_validator/src/main.rs:215: processed_transactions []
-2024-12-23 12:20:54 2024-12-23T06:50:54.659211Z  INFO db_core::db::rocks: db_core/src/db/rocks.rs:468: block hash: Ok("fbfe92d67a7293ec73b028ee843a28953fe6cf44bbbc32b7ef633fd85cd59d9c")
-2024-12-23 12:20:54 2024-12-23T06:50:54.865223Z  INFO local_validator: local_validator/src/main.rs:118: slot 617
-2024-12-23 12:20:55 2024-12-23T06:50:55.277882Z  INFO local_validator: local_validator/src/main.rs:146: block Block { transactions: [], previous_block_hash: "fbfe92d67a7293ec73b028ee843a28953fe6cf44bbbc32b7ef633fd85cd59d9c", timestamp: 1734936655277, bitcoin_block_height: 79637, transaction_count: 0, merkle_root: "0000000000000000000000000000000000000000000000000000000000000000" }
-2024-12-23 12:20:55 2024-12-23T06:50:55.278015Z  INFO local_validator: local_validator/src/main.rs:147: runtime_txs []
-2024-12-23 12:20:55 2024-12-23T06:50:55.278470Z  INFO local_validator: local_validator/src/main.rs:194: processed_transactions before rollback []
-2024-12-23 12:20:55 2024-12-23T06:50:55.278515Z  INFO local_validator: local_validator/src/main.rs:215: processed_transactions []
-2024-12-23 12:20:55 2024-12-23T06:50:55.278554Z  INFO db_core::db::rocks: db_core/src/db/rocks.rs:468: block hash: Ok("331f9e77cfe82f755562fc98a8d30c76bc9cc01de5b80fa202d6ce9968619059")
-2024-12-23 12:20:55 2024-12-23T06:50:55.481489Z  INFO local_validator: local_validator/src/main.rs:118: slot 618
-2024-12-23 12:20:55 2024-12-23T06:50:55.550023Z  WARN local_validator::rpc::methods: local_validator/src/rpc/methods.rs:181: GOT RUNTIME TRANSACTION "92fa4e7a64189b6cd7ea7c44469f17875dc7b9fc206e39c336c141e7ba7ddef8"
-2024-12-23 12:20:55 2024-12-23T06:50:55.550527Z  INFO validator::p2p::message::handler::send_runtime_transaction: validator/src/p2p/message/handler/send_runtime_transaction.rs:29: SendRuntimeTransactionHandler :: added runtime serialized runtime transaction to tx pool. number of transactions in txpool 1.
-2024-12-23 12:20:55 2024-12-23T06:50:55.906066Z  INFO local_validator: local_validator/src/main.rs:146: block Block { transactions: ["92fa4e7a64189b6cd7ea7c44469f17875dc7b9fc206e39c336c141e7ba7ddef8"], previous_block_hash: "331f9e77cfe82f755562fc98a8d30c76bc9cc01de5b80fa202d6ce9968619059", timestamp: 1734936655906, bitcoin_block_height: 79637, transaction_count: 1, merkle_root: "92fa4e7a64189b6cd7ea7c44469f17875dc7b9fc206e39c336c141e7ba7ddef8" }
-2024-12-23 12:20:55 2024-12-23T06:50:55.906109Z  INFO local_validator: local_validator/src/main.rs:147: runtime_txs [RuntimeTransaction { version: 0, signatures: [Signature([27, 217, 42, 104, 95, 187, 140, 73, 203, 237, 16, 167, 138, 212, 221, 169, 10, 33, 80, 44, 91, 26, 14, 36, 106, 126, 127, 210, 122, 250, 60, 21, 17, 153, 252, 212, 113, 118, 194, 232, 78, 48, 170, 90, 17, 248, 90, 150, 151, 72, 38, 250, 18, 44, 159, 87, 234, 143, 7, 116, 247, 144, 205, 206])], message: Message { signers: [Pubkey([48, 143, 254, 22, 188, 69, 93, 203, 95, 129, 136, 137, 97, 156, 225, 214, 202, 128, 8, 99, 134, 105, 87, 101, 27, 204, 105, 41, 198, 35, 139, 238])], instructions: [Instruction { program_id: Pubkey([122, 253, 108, 117, 146, 28, 48, 100, 122, 194, 138, 43, 158, 193, 0, 199, 65, 21, 95, 77, 192, 108, 17, 209, 17, 40, 153, 23, 107, 231, 142, 99]), accounts: [AccountMeta { pubkey: Pubkey([73, 10, 160, 174, 57, 241, 228, 228, 66, 9, 171, 101, 144, 62, 11, 99, 107, 120, 85, 6, 110, 244, 187, 255, 140, 129, 31, 222, 177, 239, 163, 94]), is_signer: false, is_writable: true }, AccountMeta { pubkey: Pubkey([48, 143, 254, 22, 188, 69, 93, 203, 95, 129, 136, 137, 97, 156, 225, 214, 202, 128, 8, 99, 134, 105, 87, 101, 27, 204, 105, 41, 198, 35, 139, 238]), is_signer: true, is_writable: false }], data: [1, 53, 54, 56, 57, 100, 51, 98, 50, 98, 48, 51, 57, 45, 52, 101, 101, 57, 45, 98, 99, 101, 48, 45, 56, 56, 49, 97, 98, 98, 57, 98, 51, 192, 137, 178, 100, 3] }] } }]
-2024-12-23 12:20:55 2024-12-23T06:50:55.906734Z  INFO runtime::invoke_context: runtime/src/invoke_context.rs:326: Serialised accounts: [SerializedAccountMetadata { original_data_len: 0, vm_data_addr: 17179869248, vm_owner_addr: 17179879488, vm_utxo_addr: 17179879520, vm_key_addr: 17179869200 }, SerializedAccountMetadata { original_data_len: 0, vm_data_addr: 17179879616, vm_owner_addr: 17179889856, vm_utxo_addr: 17179889888, vm_key_addr: 17179879568 }]
-2024-12-23 12:20:55 
-2024-12-23 12:20:55 2024-12-23T06:50:55.906758Z  INFO runtime::invoke_context: runtime/src/invoke_context.rs:329: trying to read: Pubkey([122, 253, 108, 117, 146, 28, 48, 100, 122, 194, 138, 43, 158, 193, 0, 199, 65, 21, 95, 77, 192, 108, 17, 209, 17, 40, 153, 23, 107, 231, 142, 99])
-2024-12-23 12:20:55 2024-12-23T06:50:55.908497Z  INFO arch_runtime::message_processor::stable_log: runtime/src/stable_log.rs:43: Program log: Graffiti Wall: Processing instruction
-2024-12-23 12:20:55 2024-12-23T06:50:55.908542Z  INFO runtime::invoke_context: runtime/src/invoke_context.rs:443: result Ok(34359738368)
-2024-12-23 12:20:55 2024-12-23T06:50:55.908550Z ERROR runtime::invoke_context: runtime/src/invoke_context.rs:447: program failed with status 34359738368
-2024-12-23 12:20:55 2024-12-23T06:50:55.908557Z ERROR runtime::invoke_context: runtime/src/invoke_context.rs:449: Corresponding Instruction Error ProgramError(MissingRequiredSignature)
-2024-12-23 12:20:55 2024-12-23T06:50:55.908628Z ERROR runtime::message_processor: runtime/src/message_processor.rs:70: Error processing instruction: ProgramError(MissingRequiredSignature)    
-2024-12-23 12:20:55 2024-12-23T06:50:55.908699Z ERROR validator::roast::roast_verification: validator/src/roast/roast_verification.rs:206: Transaction 92fa4e7a64189b6cd7ea7c44469f17875dc7b9fc206e39c336c141e7ba7ddef8 failed : transaction error Error processing Instruction 0 which has program_id of "7afd6c75921c30647ac28a2b9ec100c741155f4dc06c11d1112899176be78e63", error: program error: A signature was required but not found
-2024-12-23 12:20:55 2024-12-23T06:50:55.908837Z  INFO local_validator: local_validator/src/main.rs:194: processed_transactions before rollback [ProcessedTransaction { runtime_transaction: RuntimeTransaction { version: 0, signatures: [Signature([27, 217, 42, 104, 95, 187, 140, 73, 203, 237, 16, 167, 138, 212, 221, 169, 10, 33, 80, 44, 91, 26, 14, 36, 106, 126, 127, 210, 122, 250, 60, 21, 17, 153, 252, 212, 113, 118, 194, 232, 78, 48, 170, 90, 17, 248, 90, 150, 151, 72, 38, 250, 18, 44, 159, 87, 234, 143, 7, 116, 247, 144, 205, 206])], message: Message { signers: [Pubkey([48, 143, 254, 22, 188, 69, 93, 203, 95, 129, 136, 137, 97, 156, 225, 214, 202, 128, 8, 99, 134, 105, 87, 101, 27, 204, 105, 41, 198, 35, 139, 238])], instructions: [Instruction { program_id: Pubkey([122, 253, 108, 117, 146, 28, 48, 100, 122, 194, 138, 43, 158, 193, 0, 199, 65, 21, 95, 77, 192, 108, 17, 209, 17, 40, 153, 23, 107, 231, 142, 99]), accounts: [AccountMeta { pubkey: Pubkey([73, 10, 160, 174, 57, 241, 228, 228, 66, 9, 171, 101, 144, 62, 11, 99, 107, 120, 85, 6, 110, 244, 187, 255, 140, 129, 31, 222, 177, 239, 163, 94]), is_signer: false, is_writable: true }, AccountMeta { pubkey: Pubkey([48, 143, 254, 22, 188, 69, 93, 203, 95, 129, 136, 137, 97, 156, 225, 214, 202, 128, 8, 99, 134, 105, 87, 101, 27, 204, 105, 41, 198, 35, 139, 238]), is_signer: true, is_writable: false }], data: [1, 53, 54, 56, 57, 100, 51, 98, 50, 98, 48, 51, 57, 45, 52, 101, 101, 57, 45, 98, 99, 101, 48, 45, 56, 56, 49, 97, 98, 98, 57, 98, 51, 192, 137, 178, 100, 3] }] } }, status: Failed("transaction error Error processing Instruction 0 which has program_id of \"7afd6c75921c30647ac28a2b9ec100c741155f4dc06c11d1112899176be78e63\", error: program error: A signature was required but not found"), bitcoin_txid: None, accounts_tags: [] }]
-2024-12-23 12:20:55 2024-12-23T06:50:55.908898Z  INFO local_validator: local_validator/src/main.rs:215: processed_transactions [ProcessedTransaction { runtime_transaction: RuntimeTransaction { version: 0, signatures: [Signature([27, 217, 42, 104, 95, 187, 140, 73, 203, 237, 16, 167, 138, 212, 221, 169, 10, 33, 80, 44, 91, 26, 14, 36, 106, 126, 127, 210, 122, 250, 60, 21, 17, 153, 252, 212, 113, 118, 194, 232, 78, 48, 170, 90, 17, 248, 90, 150, 151, 72, 38, 250, 18, 44, 159, 87, 234, 143, 7, 116, 247, 144, 205, 206])], message: Message { signers: [Pubkey([48, 143, 254, 22, 188, 69, 93, 203, 95, 129, 136, 137, 97, 156, 225, 214, 202, 128, 8, 99, 134, 105, 87, 101, 27, 204, 105, 41, 198, 35, 139, 238])], instructions: [Instruction { program_id: Pubkey([122, 253, 108, 117, 146, 28, 48, 100, 122, 194, 138, 43, 158, 193, 0, 199, 65, 21, 95, 77, 192, 108, 17, 209, 17, 40, 153, 23, 107, 231, 142, 99]), accounts: [AccountMeta { pubkey: Pubkey([73, 10, 160, 174, 57, 241, 228, 228, 66, 9, 171, 101, 144, 62, 11, 99, 107, 120, 85, 6, 110, 244, 187, 255, 140, 129, 31, 222, 177, 239, 163, 94]), is_signer: false, is_writable: true }, AccountMeta { pubkey: Pubkey([48, 143, 254, 22, 188, 69, 93, 203, 95, 129, 136, 137, 97, 156, 225, 214, 202, 128, 8, 99, 134, 105, 87, 101, 27, 204, 105, 41, 198, 35, 139, 238]), is_signer: true, is_writable: false }], data: [1, 53, 54, 56, 57, 100, 51, 98, 50, 98, 48, 51, 57, 45, 52, 101, 101, 57, 45, 98, 99, 101, 48, 45, 56, 56, 49, 97, 98, 98, 57, 98, 51, 192, 137, 178, 100, 3] }] } }, status: Failed("transaction error Error processing Instruction 0 which has program_id of \"7afd6c75921c30647ac28a2b9ec100c741155f4dc06c11d1112899176be78e63\", error: program error: A signature was required but not found"), bitcoin_txid: None, accounts_tags: [] }]
-2024-12-23 12:20:55 2024-12-23T06:50:55.908940Z  INFO db_core::db::rocks: db_core/src/db/rocks.rs:468: block hash: Ok("53af024e0c032e3815f8afc549ceb6d7857a41be3975583c167063a5185025c7")
-2024-12-23 12:20:56 2024-12-23T06:50:56.114656Z  INFO local_validator: local_validator/src/main.rs:118: slot 619
-2024-12-23 12:20:56 2024-12-23T06:50:56.529708Z  INFO local_validator: local_validator/src/main.rs:146: block Block { transactions: [], previous_block_hash: "53af024e0c032e3815f8afc549ceb6d7857a41be3975583c167063a5185025c7", timestamp: 1734936656529, bitcoin_block_height: 79637, transaction_count: 0, merkle_root: "0000000000000000000000000000000000000000000000000000000000000000" }
-2024-12-23 12:20:56 2024-12-23T06:50:56.529917Z  INFO local_validator: local_validator/src/main.rs:147: runtime_txs []
-2024-12-23 12:20:56 2024-12-23T06:50:56.530106Z  INFO local_validator: local_validator/src/main.rs:194: processed_transactions before rollback []
-2024-12-23 12:20:56 2024-12-23T06:50:56.530135Z  INFO local_validator: local_validator/src/main.rs:215: processed_transactions []
-2024-12-23 12:20:56 2024-12-23T06:50:56.530159Z  INFO db_core::db::rocks: db_core/src/db/rocks.rs:468: block hash: Ok("6c0e4cd6b76a1d3d5845925230c73c48903d1af9caa4960481275366f4ea53d0")
-2024-12-23 12:20:56 2024-12-23T06:50:56.737308Z  INFO local_validator: local_validator/src/main.rs:118: slot 620
-2024-12-23 12:20:57 2024-12-23T06:50:57.154482Z  INFO local_validator: local_validator/src/main.rs:146: block Block { transactions: [], previous_block_hash: "6c0e4cd6b76a1d3d5845925230c73c48903d1af9caa4960481275366f4ea53d0", timestamp: 1734936657154, bitcoin_block_height: 79637, transaction_count: 0, merkle_root: "0000000000000000000000000000000000000000000000000000000000000000" }
-2024-12-23 12:20:57 2024-12-23T06:50:57.154660Z  INFO local_validator: local_validator/src/main.rs:147: runtime_txs []
-2024-12-23 12:20:57 2024-12-23T06:50:57.154998Z  INFO local_validator: local_validator/src/main.rs:194: processed_transactions before rollback []
-2024-12-23 12:20:57 2024-12-23T06:50:57.155045Z  INFO local_validator: local_validator/src/main.rs:215: processed_transactions []
-2024-12-23 12:20:57 2024-12-23T06:50:57.155086Z  INFO db_core::db::rocks: db_core/src/db/rocks.rs:468: block hash: Ok("b9d7c8899bd88e9591da6af768b92a98380fda78ef51ebc099d0f870e900d936")
-2024-12-23 12:20:57 2024-12-23T06:50:57.360787Z  INFO local_validator: local_validator/src/main.rs:118: slot 621
-2024-12-23 12:20:57 2024-12-23T06:50:57.778108Z  INFO local_validator: local_validator/src/main.rs:146: block Block { transactions: [], previous_block_hash: "b9d7c8899bd88e9591da6af768b92a98380fda78ef51ebc099d0f870e900d936", timestamp: 1734936657778, bitcoin_block_height: 79637, transaction_count: 0, merkle_root: "0000000000000000000000000000000000000000000000000000000000000000" }
-2024-12-23 12:20:57 2024-12-23T06:50:57.778229Z  INFO local_validator: local_validator/src/main.rs:147: runtime_txs []
-2024-12-23 12:20:57 2024-12-23T06:50:57.778717Z  INFO local_validator: local_validator/src/main.rs:194: processed_transactions before rollback []
-2024-12-23 12:20:57 2024-12-23T06:50:57.778767Z  INFO local_validator: local_validator/src/main.rs:215: processed_transactions []
-2024-12-23 12:20:57 2024-12-23T06:50:57.778864Z  INFO db_core::db::rocks: db_core/src/db/rocks.rs:468: block hash: Ok("064373db082fe5aa91c81b4b338403a8f502ad7a13f64d8c26b54e2d6c1201ec")
-2024-12-23 12:20:57 2024-12-23T06:50:57.983667Z  INFO local_validator: local_validator/src/main.rs:118: slot 622
-2024-12-23 12:20:58 2024-12-23T06:50:58.710674Z  INFO local_validator: local_validator/src/main.rs:146: block Block { transactions: [], previous_block_hash: "064373db082fe5aa91c81b4b338403a8f502ad7a13f64d8c26b54e2d6c1201ec", timestamp: 1734936658710, bitcoin_block_height: 79637, transaction_count: 0, merkle_root: "0000000000000000000000000000000000000000000000000000000000000000" }
-2024-12-23 12:20:58 2024-12-23T06:50:58.710903Z  INFO local_validator: local_validator/src/main.rs:147: runtime_txs []
-2024-12-23 12:20:58 2024-12-23T06:50:58.711102Z  INFO local_validator: local_validator/src/main.rs:194: processed_transactions before rollback []
-2024-12-23 12:20:58 2024-12-23T06:50:58.711125Z  INFO local_validator: local_validator/src/main.rs:215: processed_transactions []
-2024-12-23 12:20:58 2024-12-23T06:50:58.711150Z  INFO db_core::db::rocks: db_core/src/db/rocks.rs:468: block hash: Ok("85170d04510e1ef43edb690ec0feb34d2d283f7f8d33bb5ac3fb0e33c27b1180")
-2024-12-23 12:20:58 2024-12-23T06:50:58.915120Z  INFO local_validator: local_validator/src/main.rs:118: slot 623
-2024-12-23 12:20:59 2024-12-23T06:50:59.648859Z  INFO local_validator: local_validator/src/main.rs:146: block Block { transactions: [], previous_block_hash: "85170d04510e1ef43edb690ec0feb34d2d283f7f8d33bb5ac3fb0e33c27b1180", timestamp: 1734936659648, bitcoin_block_height: 79637, transaction_count: 0, merkle_root: "0000000000000000000000000000000000000000000000000000000000000000" }
-2024-12-23 12:20:59 2024-12-23T06:50:59.648993Z  INFO local_validator: local_validator/src/main.rs:147: runtime_txs []
-2024-12-23 12:20:59 2024-12-23T06:50:59.649298Z  INFO local_validator: local_validator/src/main.rs:194: processed_transactions before rollback []
-2024-12-23 12:20:59 2024-12-23T06:50:59.649317Z  INFO local_validator: local_validator/src/main.rs:215: processed_transactions []
-2024-12-23 12:20:59 2024-12-23T06:50:59.649341Z  INFO db_core::db::rocks: db_core/src/db/rocks.rs:468: block 
+#!/bin/bash
+
+SCRIPT_NAME=$(basename "$0")
+OUTPUT_FILE="codebase.md"
+rm -f "$OUTPUT_FILE"
+
+echo "# Codebase Contents" > "$OUTPUT_FILE"
+
+echo "Starting script at $(date)"
+
+# Generate tree structure
+echo "Generating tree structure..."
+echo "## Project Structure" >> "$OUTPUT_FILE"
+echo '```' >> "$OUTPUT_FILE"
+tree -I ".git|$OUTPUT_FILE|$SCRIPT_NAME" --gitignore >> "$OUTPUT_FILE"
+echo '```' >> "$OUTPUT_FILE"
+echo "" >> "$OUTPUT_FILE"
+
+# Function to check if a file is NOT a binary/image file
+is_valid_text_file() {
+    ! file -i "$1" | grep -qE 'binary|charset=binary|image/'
+}
+
+echo "Processing files..."
+
+# Use tree to list files, respecting .gitignore, and remove leading './'
+tree -if --noreport --gitignore | sed 's|^./||' | while read -r file; do
+    # Skip directories and excluded files
+    if [ -f "$file" ] && [ "$file" != "$OUTPUT_FILE" ] && [ "$file" != "$SCRIPT_NAME" ]; then
+        if is_valid_text_file "$file"; then
+            echo "Adding $file"
+            echo "## File: $file" >> "$OUTPUT_FILE"
+            echo '```' >> "$OUTPUT_FILE"
+            cat "$file" >> "$OUTPUT_FILE"
+            echo -e '\n```' >> "$OUTPUT_FILE"
+            echo "" >> "$OUTPUT_FILE"
+        else
+            echo "Skipping $file (likely binary or image file)"
+        fi
+    fi
+done
+
+echo "File processing completed at $(date)"
+
+echo "Codebase conversion complete. Output saved to $OUTPUT_FILE"
+echo "File size:"
+ls -lh "$OUTPUT_FILE"
+
+echo "Script finished at $(date)"

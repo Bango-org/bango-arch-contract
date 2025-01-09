@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { AddressPurpose, request, MessageSigningProtocols } from 'sats-connect';
 import { generatePrivateKey, generatePubkeyFromPrivateKey, hexToUint8Array } from '../utils/cryptoHelpers';
 import * as secp256k1 from 'noble-secp256k1';
+import Wallet from 'sats-connect';
 
 interface WalletState {
   isConnected: boolean;
@@ -48,10 +49,12 @@ export function useWallet() {
   
     const connectWallet = async () => {    
       try {
-        const result = await request('getAddresses', {
+        const result = await Wallet.request('getAddresses', {
           purposes: [AddressPurpose.Ordinals],
           message: 'Connect to Graffiti Wall',
         });
+
+        console.log(result)
         console.log(`Addresses: ${JSON.stringify(result.result.addresses)}`);
   
         if (result.result.addresses && result.result.addresses.length > 0) {
@@ -107,7 +110,7 @@ export function useWallet() {
         console.debug(`Signing message: ${message}`);
         try {
             console.log(`Signing key: ${state.publicKey}`);
-          const signResult = await request('signMessage', {              
+          const signResult = await Wallet.request('signMessage', {              
             address: state.address!,
             message: message,
             protocol: MessageSigningProtocols.BIP322,

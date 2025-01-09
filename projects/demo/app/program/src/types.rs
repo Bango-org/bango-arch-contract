@@ -1,9 +1,14 @@
 use borsh::{BorshDeserialize, BorshSerialize};
+use std::collections::HashMap;
+
+use arch_program::{
+    pubkey::Pubkey,
+    utxo::UtxoMeta,
+};
 
 
-
-pub struct Outcome {
 #[derive(Clone, BorshSerialize, BorshDeserialize, Debug)]
+pub struct Outcome {
     pub id: u8,
     pub total_amount: u64,
     pub bets: HashMap<Pubkey, Vec<Bet>>,

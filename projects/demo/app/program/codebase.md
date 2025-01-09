@@ -6,9 +6,16 @@
 ├── Cargo.toml
 ├── lib3.rs
 └── src
-    └── lib.rs
+    ├── burn_token.rs
+    ├── calculate_mint_price.rs
+    ├── errors.rs
+    ├── lib.rs
+    ├── mint.rs
+    ├── token_account.rs
+    ├── transfer.rs
+    └── types.rs
 
-2 directories, 4 files
+2 directories, 11 files
 ```
 
 ## File: Cargo.lock
@@ -1137,16 +1144,1190 @@ pub fn create_create_event_instruction(
 // more sophisticated payout mechanisms, and additional security checks
 ```
 
-## File: src/lib.rs
+## File: src/burn_token.rs
 ```
-use arch_program::{
-    account::AccountInfo, bitcoin::hex::DisplayHex, entrypoint, msg, program::{get_bitcoin_block_height, next_account_info, validate_utxo_ownership}, program_error::ProgramError, pubkey::Pubkey, entrypoint::ProgramResult
-};
+
+```
+
+## File: src/calculate_mint_price.rs
+```
+use arch_program::program_error::ProgramError;
+
+use crate::mint::{MintInput, TokenMintDetails};
+
+pub fn calculate_mint_price_in_sats(
+    mint_details: &TokenMintDetails,
+    mint_input: &MintInput,
+) -> Result<u64, ProgramError> {
+    let base_price = mint_input.amount * mint_details.mint_price_in_sats;
+
+    // Calculate the fractional price with ceiling rounding
+    let fraction_multiplier = 10_u64.pow(mint_details.decimals as u32);
+    let fractional_price =
+        (mint_details.mint_price_in_sats * mint_input.fractions + fraction_multiplier - 1)
+            / fraction_multiplier;
+
+    // Total price is the sum of base price and fractional price
+    Ok(base_price + fractional_price)
+}
+
+// Need to use feature :: cargo test --features no-entrypoint
+#[cfg(test)]
+mod calculate_mint_price_tests {
+    use crate::mint::{InitializeMintInput, MintStatus};
+
+    use super::*;
+    use std::collections::HashMap;
+
+    #[test]
+    fn test_calculate_price_no_fraction() {
+        // Test with no fractional part
+        let owner = [0u8; 32];
+        let initialize_input = InitializeMintInput::new(owner, 1000, "TEST".to_string(), 100, 2);
+        let token_metadata = HashMap::new();
+        let mint_details =
+            TokenMintDetails::new(initialize_input, MintStatus::Ongoing, token_metadata, [0;32]);
+
+        let mint_input = MintInput::new(10, 0, vec![]);
+
+        let price = calculate_mint_price_in_sats(&mint_details, &mint_input).unwrap();
+
+        assert_eq!(price, 1000); // 10 tokens * 100 sats each
+    }
+
+    #[test]
+    fn test_calculate_price_with_fraction_rounding_up() {
+        // Test with a fractional part that requires rounding up
+        let owner = [0u8; 32];
+        let initialize_input = InitializeMintInput::new(owner, 1000, "TEST".to_string(), 100, 2);
+        let token_metadata = HashMap::new();
+        let mint_details =
+            TokenMintDetails::new(initialize_input, MintStatus::Ongoing, token_metadata, [0;32]);
+
+        let mint_input = MintInput::new(10, 25, vec![]); // 25 out of 100 (0.25 of a token)
+
+        let price = calculate_mint_price_in_sats(&mint_details, &mint_input).unwrap();
+
+        assert_eq!(price, 1025); // 1000 + 25 (fraction rounded up)
+    }
+
+    #[test]
+    fn test_calculate_price_full_fraction() {
+        // Test with a full fractional part equal to 1 token
+        let owner = [0u8; 32];
+        let initialize_input = InitializeMintInput::new(owner, 1000, "TEST".to_string(), 100, 2);
+        let token_metadata = HashMap::new();
+        let mint_details =
+            TokenMintDetails::new(initialize_input, MintStatus::Ongoing, token_metadata, [0;32]);
+
+        let mint_input = MintInput::new(10, 100, vec![]); // 100 out of 100 (1 full token)
+
+        let price = calculate_mint_price_in_sats(&mint_details, &mint_input).unwrap();
+
+        assert_eq!(price, 1100); // 1000 + 100 (1 extra token's worth)
+    }
+
+    #[test]
+    fn test_calculate_price_decimals_more_than_1_token() {
+        // Test with a full fractional part equal to 1 token
+        let owner = [0u8; 32];
+        let initialize_input = InitializeMintInput::new(owner, 1000, "TEST".to_string(), 100, 2);
+        let token_metadata = HashMap::new();
+        let mint_details =
+            TokenMintDetails::new(initialize_input, MintStatus::Ongoing, token_metadata, [0;32]);
+
+        let mint_input = MintInput::new(10, 200, vec![]); // 100 out of 100 (1 full token)
+
+        let price = calculate_mint_price_in_sats(&mint_details, &mint_input).unwrap();
+
+        assert_eq!(price, 1200); // 1000 + 100 (1 extra token's worth)
+    }
+
+    #[test]
+    fn test_calculate_price_high_decimals_precision() {
+        // Test with high decimals (0.75 of a token)
+        let owner = [0u8; 32];
+        let initialize_input = InitializeMintInput::new(owner, 1000, "TEST".to_string(), 100, 2);
+        let token_metadata = HashMap::new();
+        let mint_details =
+            TokenMintDetails::new(initialize_input, MintStatus::Ongoing, token_metadata, [0;32]);
+
+        let mint_input = MintInput::new(10, 75, vec![]); // 75 out of 100 (0.75 of a token)
+
+        let price = calculate_mint_price_in_sats(&mint_details, &mint_input).unwrap();
+
+        assert_eq!(price, 1075); // 1000 + 75
+    }
+
+    #[test]
+    fn test_calculate_price_zero_amount() {
+        // Test with zero amount, should only use fractional price
+        let owner = [0u8; 32];
+        let initialize_input = InitializeMintInput::new(owner, 1000, "TEST".to_string(), 100, 2);
+        let token_metadata = HashMap::new();
+        let mint_details =
+            TokenMintDetails::new(initialize_input, MintStatus::Ongoing, token_metadata, [0;32]);
+
+        let mint_input = MintInput::new(0, 50, vec![]); // 0 tokens, only 0.5 token as fraction
+
+        let price = calculate_mint_price_in_sats(&mint_details, &mint_input).unwrap();
+
+        assert_eq!(price, 50); // Only the fractional price (50 out of 100)
+    }
+
+    #[test]
+    fn test_calculate_price_fraction_less_than_one_sat() {
+        // Test with a fractional price that should round to 0 (less than 1 sat)
+        let owner = [0u8; 32];
+        let initialize_input = InitializeMintInput::new(owner, 1000, "TEST".to_string(), 1, 8); // 1 sat mint price, 8 decimals
+        let token_metadata = HashMap::new();
+        let mint_details =
+            TokenMintDetails::new(initialize_input, MintStatus::Ongoing, token_metadata, [0;32]);
+
+        let mint_input = MintInput::new(10, 1, vec![]); // Small fraction: 1 out of 10^8
+
+        let price = calculate_mint_price_in_sats(&mint_details, &mint_input).unwrap();
+
+        assert_eq!(price, 11); // Fraction is less than 1 sat, so should round up
+    }
+
+    #[test]
+    fn test_calculate_price_very_small_fraction() {
+        // Test with an even smaller fractional cost (decimal part much smaller than 1 sat)
+        let owner = [0u8; 32];
+        let initialize_input = InitializeMintInput::new(owner, 1000, "TEST".to_string(), 10, 8); // 10 sats mint price, 8 decimals
+        let token_metadata = HashMap::new();
+        let mint_details =
+            TokenMintDetails::new(initialize_input, MintStatus::Ongoing, token_metadata, [0;32]);
+
+        let mint_input = MintInput::new(10, 1, vec![]); // 1 out of 10^8, effectively zero sats
+
+        let price = calculate_mint_price_in_sats(&mint_details, &mint_input).unwrap();
+
+        assert_eq!(price, 101); // Fraction is less than 1 sat, so should round up 1
+    }
+}
+```
+
+## File: src/errors.rs
+```
 use borsh::{BorshDeserialize, BorshSerialize};
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+pub enum FungibleTokenError {
+    InsufficientBalance,
+    MintOver,
+    NotEnoughRemainingMintableTokens,
+}
+```
+
+## File: src/lib.rs
+```
+use std::{cell::RefMut, collections::HashMap};
+
+use arch_program::{
+    account::AccountInfo,
+    bitcoin::{absolute::LockTime, consensus, transaction::Version, Transaction},
+    entrypoint::{ProgramResult},
+    helper::add_state_transition,
+    input_to_sign::InputToSign,
+    msg,
+    program::{
+        get_bitcoin_block_height, next_account_info, set_transaction_to_sign,
+        validate_utxo_ownership,
+    },
+    program_error::ProgramError,
+    pubkey::Pubkey,
+    transaction_to_sign::TransactionToSign,
+    utxo::UtxoMeta,
+};
+use borsh::{BorshDeserialize, BorshSerialize};
+use arch_program::entrypoint;
+
+
+use mint::{initialize_mint, mint_tokens, InitializeMintInput, MintInput};
+use token_account::initialize_balance_account;
+use transfer::{transfer_tokens, TransferInput};
+use types::{*};
+
+pub mod types;
+pub mod errors;
+pub mod mint;
+pub mod token_account;
+pub mod transfer;
+
+
+entrypoint!(process_instruction);
+
+pub fn process_instruction(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    instruction_data: &[u8],
+) -> ProgramResult {
+    msg!("Hello 1");
+
+    let function_number = instruction_data[0];
+
+    msg!("Hello 1");
+
+    let account_iter = &mut accounts.clone().iter();
+
+    match function_number {
+        1 => {
+            msg!("Instruction: CreateEvent");
+
+            let params = PredictionEventParams::try_from_slice(&instruction_data[1..])
+                .map_err(|_| ProgramError::InvalidInstructionData)?;
+
+            let res = process_create_event(
+                accounts,
+                params.unique_id,
+                params.expiry_timestamp,
+                params.num_outcomes,
+            );
+
+            res
+        }
+
+        2 => {
+            msg!("Instruction: CloseEvent");
+
+            let params = ClosePredictionEventParams::try_from_slice(&instruction_data[1..])
+                .map_err(|_| ProgramError::InvalidInstructionData)?;
+
+            let res = process_close_event(accounts, params.unique_id);
+
+            res
+        }
+
+        3 => {
+            msg!("Instruction: Bet on Event");
+
+            let params = BetOnPredictionEventParams::try_from_slice(&instruction_data[1..])
+                .map_err(|_| ProgramError::InvalidInstructionData)?;
+
+            let res = process_place_bet(
+                accounts,
+                params.unique_id,
+                params.outcome_id,
+                params.amount,
+                params.tx_hex,
+                params.utxo,
+            );
+
+            res
+        }
+
+
+        4 => {
+            /* -------------------------------------------------------------------------- */
+            /*                               INITIALIZE MINT                              */
+            /* -------------------------------------------------------------------------- */
+            // 1 Account : (owned by program, uninitialized)
+            msg!("Initializing Mint Account ");
+
+            if accounts.len() != 1 {
+                return Err(ProgramError::Custom(502));
+            }
+
+            let account = next_account_info(account_iter)?;
+
+            let initialize_mint_input: InitializeMintInput =
+                borsh::from_slice(&instruction_data[1..])
+                    .map_err(|_e| ProgramError::InvalidArgument)?;
+
+            initialize_mint(account, program_id, initialize_mint_input)?;
+            Ok(())            
+        }
+
+        5 => {
+            /* -------------------------------------------------------------------------- */
+            /*                         INITIALIZE BALANCE ACCOUNT                         */
+            /* -------------------------------------------------------------------------- */
+            // No instruction data needed, only 3 accounts
+            // 1 - Token balance owner (signer, writable)
+            // 2 - Mint account (owned by program and writable)
+            // 3 - Supplied account (owned by program, uninitialized )
+            if accounts.len() != 3 {
+                return Err(ProgramError::Custom(502));
+            }
+
+            let owner_account = next_account_info(account_iter)?;
+
+            let mint_account = next_account_info(account_iter)?;
+
+            let balance_account = next_account_info(account_iter)?;
+
+            initialize_balance_account(owner_account, mint_account, balance_account, program_id)?;
+            Ok(())
+        }
+
+        6 => {
+            /* -------------------------------------------------------------------------- */
+            /*                                 MINT TOKENS                                */
+            /* -------------------------------------------------------------------------- */
+            // 1 - Mint account ( owned by program and writable )
+            // 2 - Balance account ( owned by program and writable )
+            // 3 - Owner account( signer )
+            if accounts.len() != 3 {
+                return Err(ProgramError::Custom(502));
+            }
+
+            let mint_account = next_account_info(account_iter)?;
+
+            let balance_account = next_account_info(account_iter)?;
+
+            let owner_account = next_account_info(account_iter)?;
+
+            let mint_input: MintInput = borsh::from_slice(&instruction_data[1..])
+                .map_err(|_e| ProgramError::InvalidArgument)?;
+
+            mint_tokens(
+                balance_account,
+                mint_account,
+                owner_account,
+                program_id,
+                mint_input,
+            )?;
+            Ok(())
+        }
+
+        7 => {
+            /* -------------------------------------------------------------------------- */
+            /*                               TRANSFER TOKENS                              */
+            /* -------------------------------------------------------------------------- */
+            // 1 - Owner Account ( is_signer )
+            // 2 - Mint Account ( writable and owned by program )
+            // 3 - Sender Account ( writable and owned by program, balance owner is Account 1 )
+            // 4 - Receiver Account ( writable and owned by program )
+
+            if accounts.len() != 4 {
+                return Err(ProgramError::Custom(502));
+            }
+
+            let owner_account = next_account_info(account_iter)?;
+
+            let mint_account = next_account_info(account_iter)?;
+
+            let sender_account = next_account_info(account_iter)?;
+
+            let receiver_account = next_account_info(account_iter)?;
+
+            let transfer_input: TransferInput = borsh::from_slice(&instruction_data[1..])
+                .map_err(|_e| ProgramError::InvalidArgument)?;
+
+            transfer_tokens(
+                owner_account,
+                mint_account,
+                sender_account,
+                receiver_account,
+                program_id,
+                transfer_input,
+            )?;
+            Ok(())
+        }
+
+
+        // 8 => {
+        //     /* -------------------------------------------------------------------------- */
+        //     /*                               Get My Balance                               */
+        //     /* -------------------------------------------------------------------------- */
+        //     // 1 - Owner Account ( is_signer )
+        //     // 2 - Mint Account ( writable and owned by program )
+        //     // 3 - Sender Account ( writable and owned by program, balance owner is Account 1 )
+        //     // 4 - Receiver Account ( writable and owned by program )
+
+        //     if accounts.len() != 4 {
+        //         return Err(ProgramError::Custom(502));
+        //     }
+
+        //     let owner_account = next_account_info(account_iter)?;
+
+        //     let mint_account = next_account_info(account_iter)?;
+
+        //     let sender_account = next_account_info(account_iter)?;
+
+        //     let receiver_account = next_account_info(account_iter)?;
+
+        //     let transfer_input: TransferInput = borsh::from_slice(&instruction_data[1..])
+        //         .map_err(|_e| ProgramError::InvalidArgument)?;
+
+        //     transfer_tokens(
+        //         owner_account,
+        //         mint_account,
+        //         sender_account,
+        //         receiver_account,
+        //         program_id,
+        //         transfer_input,
+        //     )?;
+        //     Ok(())
+        // }
+        
+
+        _ => Err(ProgramError::BorshIoError(String::from(
+            "Invalid function call",
+        ))),
+    }
+}
+
+pub fn process_create_event(
+    accounts: &[AccountInfo],
+    unique_id: [u8; 32],
+    expiry_timestamp: u32,
+    num_outcomes: u8,
+) -> Result<(), ProgramError> {
+    let accounts_iter = &mut accounts.iter();
+    let event_account = next_account_info(accounts_iter)?;
+    let creator_account = next_account_info(accounts_iter)?;
+
+    msg!("Hello1 {}, {}", creator_account.is_signer, creator_account.is_executable);
+    if !creator_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    let mut outcomes = Vec::new();
+    for i in 0..num_outcomes {
+        outcomes.push(Outcome {
+            id: i,
+            total_amount: 0,
+            bets: HashMap::new(),
+        });
+    }
+
+    let event = PredictionEvent {
+        unique_id: unique_id,
+        creator: creator_account.key.clone(),
+        expiry_timestamp: expiry_timestamp,
+        outcomes: outcomes,
+        total_pool_amount: 0,
+        status: EventStatus::Active,
+        winning_outcome: None,
+    };
+    msg!("Hello 1");
+
+    let data = event_account.try_borrow_mut_data()?;
+    msg!("Hello 1");
+
+    // fetch all events data
+    let mut predictions_data = helper_deserialize_predictions(data)?;
+    msg!("Hello 1");
+
+    predictions_data.predictions.push(event);
+    predictions_data.total_predictions += 1;
+
+    helper_store_predictions(event_account, predictions_data)
+}
+
+pub fn process_close_event(
+    accounts: &[AccountInfo],
+    unique_id: [u8; 32],
+) -> Result<(), ProgramError> {
+    let accounts_iter = &mut accounts.iter();
+    let event_account = next_account_info(accounts_iter)?;
+    let creator_account = next_account_info(accounts_iter)?;
+
+    if !creator_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    let data = event_account.try_borrow_mut_data()?;
+    let mut predictions_data = helper_deserialize_predictions(data)?;
+
+    let index = predictions_data
+        .predictions
+        .iter()
+        .position(|x| x.unique_id == unique_id)
+        .unwrap();
+
+    predictions_data.predictions[index].status = EventStatus::Closed;
+    predictions_data.total_predictions -= 1;
+
+    helper_store_predictions(event_account, predictions_data)
+}
+
+pub fn helper_deserialize_predictions(
+    data: RefMut<'_, &mut [u8]>,
+) -> Result<Predictions, ProgramError> {
+    msg!("Total bytes: {}", data.len());
+    let predictions_data = if data.len() > 0 {
+        Predictions::try_from_slice(&data).map_err(|e| {
+            msg!("Error: Failed to deserialize event data {}", e.to_string());
+            ProgramError::BorshIoError(String::from("Error: Failed to deserialize event data"))
+        })?
+    } else {
+        Predictions {
+            total_predictions: 0,
+            predictions: Vec::new(),
+        }
+    };
+
+    Ok(predictions_data)
+}
+
+pub fn helper_store_predictions(
+    event_account: &AccountInfo<'_>,
+    predictions_data: Predictions,
+) -> Result<(), ProgramError> {
+    let serialized_data = borsh::to_vec(&predictions_data)
+        .map_err(|_| ProgramError::BorshIoError(String::from("Serailization failed")))?;
+    let required_len = serialized_data.len();
+    msg!("Serlized data length {}", required_len);
+
+    if event_account.data_len() < required_len {
+        event_account.realloc(required_len, false)?;
+    }
+
+    msg!("account size {}", event_account.data_len());
+
+    event_account.data.borrow_mut()[..required_len].copy_from_slice(&serialized_data);
+
+    Ok(())
+}
+
+pub fn process_place_bet(
+    accounts: &[AccountInfo],
+    unique_id: [u8; 32],
+    outcome_id: u8,
+    amount: u64,
+    tx_hex: Vec<u8>,
+    utxo: UtxoMeta,
+) -> Result<(), ProgramError> {
+    let accounts_iter = &mut accounts.iter();
+    let event_account = next_account_info(accounts_iter)?;
+    let better_account = next_account_info(accounts_iter)?;
+
+    if !better_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    let mut events = Predictions::try_from_slice(&event_account.data.borrow())
+        .map_err(|_| ProgramError::InvalidAccountData)?;
+
+    let mut event = events
+        .predictions
+        .iter_mut()
+        .find(|p| p.unique_id == unique_id)
+        .unwrap();
+
+    if event.status != EventStatus::Active {
+        return Err(ProgramError::BorshIoError(String::from("Event is closed.")));
+    }
+
+    if !validate_utxo_ownership(better_account.utxo, better_account.key) {
+        return Err(ProgramError::InvalidArgument);
+    }
+
+    if better_account.utxo.clone() != UtxoMeta::from_slice(&[0; 36]) {
+        msg!("UTXO {:?}", better_account.utxo.clone());
+        return Err(ProgramError::BorshIoError(String::from("No UTXO Passed")));
+    }
+
+    let fees_tx: Transaction = consensus::deserialize(&tx_hex).unwrap();
+
+    let mut tx = Transaction {
+        version: Version::TWO,
+        lock_time: LockTime::ZERO,
+        input: vec![],
+        output: vec![],
+    };
+
+    add_state_transition(&mut tx, event_account);
+    tx.input.push(fees_tx.input[0].clone());
+
+    let tx_to_sign = TransactionToSign {
+        tx_bytes: &consensus::serialize(&tx),
+        inputs_to_sign: &[InputToSign {
+            index: 0,
+            signer: event_account.key.clone(),
+        }],
+    };
+
+    msg!("tx_to_sign{:?}", tx_to_sign);
+
+    set_transaction_to_sign(accounts, tx_to_sign);
+
+    let bet = Bet {
+        user: better_account.key.clone(),
+        event_id: event.unique_id,
+        outcome_id,
+        amount,
+        tx_hex,
+        utxo,
+        timestamp: get_bitcoin_block_height() as i64,
+    };
+
+    let outcome = event
+        .outcomes
+        .iter_mut()
+        .find(|outcome| outcome.id == outcome_id)
+        .unwrap();
+
+    let bets: Option<&mut Vec<Bet>> = outcome.bets.get_mut(&better_account.key);
+
+    if let Some(bets) = bets {
+        // You now have `bets`, which is a mutable reference to `Vec<Bet>`
+        bets.push(bet);
+    } else {
+        outcome.bets.insert(better_account.key.clone(), vec![bet]);
+    }
+
+    event
+        .serialize(&mut *event_account.data.borrow_mut())
+        .map_err(|_| ProgramError::InvalidAccountData)?;
+
+    Ok(())
+}
+
+```
+
+## File: src/mint.rs
+```
+use std::collections::HashMap;
+
+use arch_program::{account::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
+use borsh::{BorshDeserialize, BorshSerialize};
+
+use crate::token_account::TokenBalance;
+
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+pub struct TokenMintDetails {
+    owner: [u8; 32],
+    pub status: MintStatus,
+    pub supply: u64,             // in lowest denomination
+    pub circulating_supply: u64, // in lowest denomination
+    pub ticker: String,
+    pub decimals: u8,
+    token_metadata: HashMap<String, [u8; 32]>,
+}
+
+impl TokenMintDetails {
+    pub fn new(
+        input: InitializeMintInput,
+        status: MintStatus,
+        token_metadata: HashMap<String, [u8; 32]>,
+    ) -> Self {
+        TokenMintDetails {
+            owner: input.owner,
+            status,
+            supply: input.supply,
+            circulating_supply: 0,
+            ticker: input.ticker,
+            decimals: input.decimals,
+            token_metadata,
+        }
+    }
+}
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Eq, PartialEq)]
+pub enum MintStatus {
+    Ongoing,
+    Finished,
+}
+
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+pub struct InitializeMintInput {
+    owner: [u8; 32],
+    supply: u64, // in lowest denomination
+    ticker: String,
+    decimals: u8,
+}
+impl InitializeMintInput {
+    pub fn new(owner: [u8; 32], supply: u64, ticker: String, decimals: u8) -> Self {
+        InitializeMintInput {
+            owner,
+            supply,
+            ticker,
+            decimals,
+        }
+    }
+}
+
+pub(crate) fn initialize_mint(
+    account: &AccountInfo<'_>,
+    program_id: &Pubkey,
+    mint_input: InitializeMintInput,
+) -> Result<(), ProgramError> {
+    if !account.data_is_empty() {
+        return Err(ProgramError::AccountAlreadyInitialized);
+    }
+
+    if account.owner != program_id {
+        return Err(ProgramError::IllegalOwner);
+    }
+
+    let mint_initial_details =
+        TokenMintDetails::new(mint_input, MintStatus::Ongoing, HashMap::new());
+
+    let serialized_mint_details = borsh::to_vec(&mint_initial_details)
+        .map_err(|e| ProgramError::BorshIoError(e.to_string()))?;
+
+    if !serialized_mint_details.is_empty() {
+        account.realloc(serialized_mint_details.len(), true)?;
+    }
+
+    account
+        .data
+        .try_borrow_mut()
+        .map_err(|_e| ProgramError::AccountBorrowFailed)?
+        .copy_from_slice(&serialized_mint_details);
+
+    Ok(())
+}
+
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+pub struct MintInput {
+    pub amount: u64,
+}
+impl MintInput {
+    pub fn new(amount: u64) -> Self {
+        MintInput { amount }
+    }
+}
+pub fn mint_tokens(
+    balance_account: &AccountInfo<'_>,
+    mint_account: &AccountInfo<'_>,
+    owner_account: &AccountInfo<'_>,
+    program_id: &Pubkey,
+    mint_input: MintInput,
+) -> Result<(), ProgramError> {
+    /* ------------------------- Balance account checks ------------------------- */
+    let mut token_balance_data = balance_account
+        .data
+        .try_borrow_mut()
+        .map_err(|_| ProgramError::AccountBorrowFailed)?;
+
+    let mut token_balance = TokenBalance::deserialize(&mut &token_balance_data[..])
+        .map_err(|_| ProgramError::InvalidAccountData)?;
+
+    if balance_account.owner != program_id {
+        return Err(ProgramError::Custom(501));
+    };
+
+    if token_balance.mint_account != mint_account.key.serialize() {
+        return Err(ProgramError::Custom(503));
+    }
+
+    if token_balance.owner != owner_account.key.serialize() {
+        return Err(ProgramError::Custom(502));
+    }
+
+    /* --------------------------- MINT ACCOUNT CHECKS -------------------------- */
+
+    let mut mint_data = mint_account
+        .data
+        .try_borrow_mut()
+        .map_err(|_| ProgramError::AccountBorrowFailed)?;
+
+    let mut mint_details = TokenMintDetails::deserialize(&mut &mint_data[..])
+        .map_err(|_| ProgramError::InvalidAccountData)?;
+
+    if mint_account.owner != program_id {
+        return Err(ProgramError::Custom(504));
+    }
+
+    if mint_details.status == MintStatus::Finished {
+        return Err(ProgramError::Custom(502));
+    }
+
+    /* -------------------------- OWNER ACCOUNT CHECKS -------------------------- */
+    if !owner_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    /* -------------------------------- EXECUTION ------------------------------- */
+
+    add_mint_to_circulating_supply(&mut mint_details, &mint_input)?;
+    msg!("circulating_supply: {}", mint_details.circulating_supply);
+
+    if mint_details.circulating_supply == mint_details.supply {
+        mint_details.status = MintStatus::Finished;
+    }
+
+    token_balance.increase_balance(mint_input.amount, &mint_details);
+
+    let new_serialized_token_balance = borsh::to_vec(&token_balance).unwrap();
+
+    let new_serialized_mint_details = borsh::to_vec(&mint_details).unwrap();
+
+    /* -------------------------- UPDATE TOKEN BALANCE -------------------------- */
+
+    if new_serialized_token_balance.len() > token_balance_data.len() {
+        balance_account.realloc(new_serialized_token_balance.len(), true)?;
+    }
+    token_balance_data.copy_from_slice(&new_serialized_token_balance);
+
+    /* ---------------------------- UPDATE MINT DATA ---------------------------- */
+
+    if new_serialized_mint_details.len() > mint_data.len() {
+        mint_account.realloc(new_serialized_mint_details.len(), true)?;
+    }
+    mint_data.copy_from_slice(&new_serialized_mint_details);
+
+    Ok(())
+}
+
+pub fn add_mint_to_circulating_supply(
+    mint_details: &mut TokenMintDetails,
+    mint_input: &MintInput,
+) -> Result<(), ProgramError> {
+    if mint_input.amount > mint_details.supply - mint_details.circulating_supply {
+        msg!(
+            "Not enough remaining supply. You can only mint up to {} tokens. You requested {}",
+            mint_details.supply - mint_details.circulating_supply,
+            mint_input.amount
+        );
+        return Err(ProgramError::InsufficientFunds); // Not enough remaining supply
+    }
+
+    mint_details.circulating_supply += mint_input.amount;
+
+    Ok(())
+}
+```
+
+## File: src/token_account.rs
+```
+use arch_program::{account::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
+use borsh::{BorshDeserialize, BorshSerialize};
+
+use crate::mint::TokenMintDetails;
+
+#[derive(Clone, Copy, BorshSerialize, BorshDeserialize, Debug)]
+pub struct TokenBalance {
+    pub owner: [u8; 32],
+    pub mint_account: [u8; 32],
+    pub current_balance: u64, // in smallest denomination of token
+}
+
+impl TokenBalance {
+    pub fn new(owner: [u8; 32], mint_account: [u8; 32]) -> Self {
+        TokenBalance {
+            owner,
+            mint_account,
+            current_balance: 0,
+        }
+    }
+
+    pub fn increase_balance(
+        &mut self,
+        amount: u64, // in smallest denomination of token
+        token_mint_details: &TokenMintDetails,
+    ) {
+        // let fraction_multiplier = 10_u64.pow(token_mint_details.decimals as u32);
+
+        // Add whole tokens directly
+        self.current_balance += amount;
+
+        // let total_fractions = self.fractions + fractions;
+
+        // if total_fractions >= fraction_multiplier {
+        //     let overflow_tokens = total_fractions / fraction_multiplier;
+        //     let remaining_fractions = total_fractions % fraction_multiplier;
+
+        //     // Add overflowed tokens to current balance
+        //     self.current_balance += overflow_tokens;
+        //     self.fractions = remaining_fractions;
+        // } else {
+        //     // No overflow, just update fractions
+        //     self.fractions = total_fractions;
+        // }
+    }
+
+    /// Decrease the balance by the given `amount` and `fractions`.
+    pub fn decrease_balance(
+        &mut self,
+        amount: u64,
+        token_mint_details: &TokenMintDetails,
+    ) -> Result<(), ProgramError> {
+        // Check if sufficient whole tokens are available
+        if self.current_balance < amount {
+            msg!(
+                "Insufficient balance. You have {} tokens but you are trying to spend {}",
+                self.current_balance,
+                amount
+            );
+            return Err(ProgramError::InsufficientFunds);
+        }
+
+        self.current_balance -= amount;
+
+        Ok(())
+    }
+}
+
+pub fn initialize_balance_account(
+    owner_account: &AccountInfo<'_>,
+    mint_account: &AccountInfo<'_>,
+    balance_account: &AccountInfo<'_>,
+    program_id: &Pubkey,
+) -> Result<(), ProgramError> {
+    if !owner_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    if !mint_account.is_writable {
+        return Err(ProgramError::Immutable);
+    }
+
+    if mint_account.owner != program_id {
+        return Err(ProgramError::IllegalOwner);
+    }
+
+    if !balance_account.data_is_empty() || balance_account.is_executable {
+        return Err(ProgramError::AccountAlreadyInitialized);
+    }
+
+    if balance_account.owner != program_id {
+        return Err(ProgramError::IllegalOwner);
+    }
+
+    let token_balance =
+        TokenBalance::new(owner_account.key.serialize(), mint_account.key.serialize());
+
+    let serialized_token_balance =
+        borsh::to_vec(&token_balance).map_err(|e| ProgramError::BorshIoError(e.to_string()))?;
+
+    balance_account.realloc(serialized_token_balance.len(), true)?;
+
+    msg!("Changing account data to {:?}!", token_balance);
+
+    balance_account
+        .data
+        .try_borrow_mut()
+        .unwrap()
+        .copy_from_slice(&serialized_token_balance);
+    Ok(())
+}
+
+//cargo test --features=no-entrypoint
+#[cfg(test)]
+mod balance_change_tests {
+    use crate::mint::{InitializeMintInput, MintStatus};
+
+    use super::*;
+    use std::collections::HashMap;
+
+    fn create_token_mint_details(mint_price: u64, decimals: u8) -> TokenMintDetails {
+        let owner = [0u8; 32];
+        let initialize_input = InitializeMintInput::new(owner, 1000, "TEST".to_string(), decimals);
+        let token_metadata = HashMap::new();
+        TokenMintDetails::new(initialize_input, MintStatus::Ongoing, token_metadata)
+    }
+
+    #[test]
+    fn test_increase_balance_no_fractional_overflow() {
+        let mut balance = TokenBalance::new([0u8; 32], [0u8; 32]);
+        let mint_details = create_token_mint_details(100, 2); // 2 decimals (100 fractions per token)
+
+        balance.increase_balance(5, &mint_details); // Add 5 tokens
+        assert_eq!(balance.current_balance, 5);
+    }
+
+    #[test]
+    fn test_decrease_balance_no_fractional_underflow() {
+        let mut balance = TokenBalance::new([0u8; 32], [0u8; 32]);
+        let mint_details = create_token_mint_details(100, 2); // 2 decimals (100 fractions per token)
+
+        balance.increase_balance(5, &mint_details); // Start with 5 tokens
+        let result = balance.decrease_balance(3, &mint_details); // Subtract 3 tokens
+        assert!(result.is_ok());
+        assert_eq!(balance.current_balance, 2);
+    }
+
+    #[test]
+    fn test_decrease_balance_insufficient_balance() {
+        let mut balance = TokenBalance::new([0u8; 32], [0u8; 32]);
+        let mint_details = create_token_mint_details(100, 2); // 2 decimals (100 fractions per token)
+
+        balance.increase_balance(2, &mint_details); // Start with 2 tokens
+        let result = balance.decrease_balance(3, &mint_details); // Attempt to subtract more than available
+        assert!(result.is_err());
+    }
+}
+```
+
+## File: src/transfer.rs
+```
+use arch_program::{account::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
+use borsh::{BorshDeserialize, BorshSerialize};
+
+use crate::{mint::TokenMintDetails, token_account::TokenBalance};
+
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+pub struct TransferInput {
+    pub amount: u64,
+}
+impl TransferInput {
+    pub fn new(amount: u64) -> Self {
+        TransferInput { amount }
+    }
+}
+
+pub fn transfer_tokens(
+    owner_account: &AccountInfo<'_>,
+    mint_account: &AccountInfo<'_>,
+    sender_account: &AccountInfo<'_>,
+    receiver_account: &AccountInfo<'_>,
+    program_id: &Pubkey,
+    transfer_input: TransferInput,
+) -> Result<(), ProgramError> {
+    /* ------------------------- Sender account checks ------------------------- */
+    let mut sender_token_balance_data = sender_account
+        .data
+        .try_borrow_mut()
+        .map_err(|_| ProgramError::AccountBorrowFailed)?;
+
+    let mut sender_token_balance = TokenBalance::deserialize(&mut &sender_token_balance_data[..])
+        .map_err(|_| ProgramError::InvalidAccountData)?;
+
+    if sender_account.owner != program_id {
+        return Err(ProgramError::Custom(501));
+    };
+
+    if sender_token_balance.mint_account != mint_account.key.serialize() {
+        return Err(ProgramError::Custom(503));
+    }
+
+    if sender_token_balance.owner != owner_account.key.serialize() {
+        return Err(ProgramError::Custom(502));
+    }
+
+    /* ------------------------- Receiver account checks ------------------------- */
+
+    let mut receiver_token_balance_data = receiver_account
+        .data
+        .try_borrow_mut()
+        .map_err(|_| ProgramError::AccountBorrowFailed)?;
+
+    let mut receiver_token_balance =
+        TokenBalance::deserialize(&mut &receiver_token_balance_data[..])
+            .map_err(|_| ProgramError::InvalidAccountData)?;
+
+    if receiver_account.owner != program_id {
+        return Err(ProgramError::Custom(505));
+    };
+
+    if receiver_token_balance.mint_account != mint_account.key.serialize() {
+        return Err(ProgramError::Custom(506));
+    }
+
+    /* --------------------------- MINT ACCOUNT CHECKS -------------------------- */
+
+    let mint_data = mint_account
+        .data
+        .try_borrow_mut()
+        .map_err(|_| ProgramError::AccountBorrowFailed)?;
+
+    let mint_details = TokenMintDetails::deserialize(&mut &mint_data[..])
+        .map_err(|_| ProgramError::InvalidAccountData)?;
+
+    if mint_account.owner != program_id {
+        return Err(ProgramError::Custom(504));
+    }
+    /* -------------------------- OWNER ACCOUNT CHECKS -------------------------- */
+    if !owner_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    /* -------------------------------- EXECUTION ------------------------------- */
+    sender_token_balance.decrease_balance(transfer_input.amount, &mint_details)?;
+
+    receiver_token_balance.increase_balance(transfer_input.amount, &mint_details);
+
+    /* -------------------------- UPDATE SENDER BALANCE ------------------------- */
+
+    let new_serialized_sender_balance = borsh::to_vec(&sender_token_balance).unwrap();
+
+    if new_serialized_sender_balance.len() > sender_token_balance_data.len() {
+        sender_account.realloc(new_serialized_sender_balance.len(), true)?;
+    }
+
+    /* ------------------------- UPDATE RECEIVER BALANCE ------------------------ */
+
+    let new_serialized_receiver_balance = borsh::to_vec(&receiver_token_balance).unwrap();
+
+    if new_serialized_receiver_balance.len() > receiver_token_balance_data.len() {
+        receiver_account.realloc(new_serialized_receiver_balance.len(), true)?;
+    }
+
+    receiver_token_balance_data.copy_from_slice(&new_serialized_receiver_balance);
+
+    sender_token_balance_data.copy_from_slice(&new_serialized_sender_balance);
+
+    Ok(())
+}
+```
+
+## File: src/types.rs
+```
+use borsh::{BorshDeserialize, BorshSerialize};
+use std::collections::HashMap;
+
+use arch_program::{
+    pubkey::Pubkey,
+    utxo::UtxoMeta,
+};
+
+
+#[derive(Clone, BorshSerialize, BorshDeserialize, Debug)]
+pub struct Outcome {
+    pub id: u8,
+    pub total_amount: u64,
+    pub bets: HashMap<Pubkey, Vec<Bet>>,
+}
+
+#[derive(Clone, BorshSerialize, BorshDeserialize, Debug)]
+pub struct PredictionEvent {
+    pub unique_id: [u8; 32],
+    pub creator: Pubkey,
+    pub expiry_timestamp: u32,
+    pub outcomes: Vec<Outcome>,
+    pub total_pool_amount: u64,
+    pub status: EventStatus,
+    pub winning_outcome: Option<u8>,
+}
+
+#[derive(Clone, BorshSerialize, BorshDeserialize, Debug)]
+pub struct Bet {
+    pub user: Pubkey,
+    pub event_id: [u8; 32],
+    pub outcome_id: u8,
+    pub amount: u64,
+    pub tx_hex: Vec<u8>,
+    pub utxo: UtxoMeta,
+    pub timestamp: i64,
+}
+
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+pub struct Predictions {
+    pub total_predictions: u32,
+    pub predictions: Vec<PredictionEvent>,
+}
+
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+pub struct PredictionEventParams {
+    pub unique_id: [u8; 32],
+    pub expiry_timestamp: u32,
+    pub num_outcomes: u8,
+}
+
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+pub struct ClosePredictionEventParams {
+    pub unique_id: [u8; 32],
+}
+
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+pub struct BetOnPredictionEventParams {
+    pub unique_id: [u8; 32],
+    pub outcome_id: u8,
+    pub amount: u64,
+    pub tx_hex: Vec<u8>,
+    pub utxo: UtxoMeta,
+}
+
+#[derive(Clone, BorshSerialize, BorshDeserialize, Debug, PartialEq)]
 pub enum EventStatus {
     Active,
+    Closed,
     Resolved,
     Cancelled,
 }
@@ -1160,222 +2341,6 @@ pub enum PredictionMarketError {
     EventNotResolved,
     EventAlreadyResolved,
 }
-
-
-#[derive(BorshSerialize, BorshDeserialize, Debug)]
-pub struct Outcome {
-    pub id: u8,
-    pub total_amount: u64,
-}
-
-#[derive(BorshSerialize, BorshDeserialize, Debug)]
-pub struct PredictionEvent {
-    pub unique_id: [u8; 32],
-    pub creator: Pubkey,
-    pub expiry_timestamp: u32,
-    pub outcomes: Vec<Outcome>,
-    pub total_pool_amount: u64,
-    pub status: EventStatus,
-    pub winning_outcome: Option<u8>,
-}
-
-#[derive(BorshSerialize, BorshDeserialize, Debug)]
-pub struct Bet {
-    pub user: Pubkey,
-    pub event_id: [u8; 32],
-    pub outcome_id: u8,
-    pub amount: u64,
-    pub timestamp: i64,
-}
-
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
-pub struct PredictionEventParams {
-    pub unique_id: [u8; 32],
-    pub expiry_timestamp: u32,
-    pub num_outcomes: u8,
-}
-
-#[derive(BorshSerialize, BorshDeserialize, Debug)]
-pub enum PredictionMarketInstruction {
-    CreateEvent {
-        unique_id: [u8; 32],
-        expiry_timestamp: i64,
-        num_outcomes: u8,
-    },
-    PlaceBet {
-        event_id: [u8; 32],
-        outcome_id: u8,
-        amount: u64,
-    },
-    ResolveEvent {
-        event_id: [u8; 32],
-        winning_outcome: u8,
-    },
-    ClaimWinnings {
-        event_id: [u8; 32],
-    },
-}
-
-entrypoint!(process_instruction);
-
-pub fn process_instruction(
-    program_id: &Pubkey,
-    accounts: &[AccountInfo],
-    instruction_data: &[u8],
-) -> ProgramResult {
-
-
-    let instruction = PredictionMarketInstruction::try_from_slice(instruction_data)
-        .map_err(|_| PredictionMarketError::InvalidInstruction);
-
-    match instruction.unwrap() {
-        PredictionMarketInstruction::CreateEvent { 
-            unique_id, 
-            expiry_timestamp, 
-            num_outcomes 
-        } => {
-            msg!("Instruction: CreateEvent");
-            process_create_event(program_id, accounts, unique_id, expiry_timestamp, num_outcomes)
-        },
-        // PredictionMarketInstruction::PlaceBet { 
-        //     event_id, 
-        //     outcome_id,
-        //     amount 
-        // } => {
-        //     msg!("Instruction: PlaceBet");
-        //     process_place_bet(program_id, accounts, amount, chosen_outcome)
-        // },
-        // PredictionMarketInstruction::ResolveEvent { 
-        //     winning_outcome 
-        // } => {
-        //     msg!("Instruction: ResolveEvent");
-        //     resolve_event(program_id, accounts, winning_outcome)
-        // },
-        // PredictionMarketInstruction::ClaimWinnings { 
-        //     event_id 
-        // } => {
-        //     msg!("Instruction: ClaimWinnings");
-        //     claim_winnings(program_id, accounts, event_id)
-        // },
-    }
-    
-}
-
-pub fn process_create_event(
-    program_id: &Pubkey,
-    accounts: &[AccountInfo],
-    unique_id: [u8; 32],
-    expiry_timestamp: i64,
-    num_outcomes: u8,
-) -> Result<(), ProgramError> {
-
-
-    let accounts_iter = &mut accounts.iter();
-    let event_account = next_account_info(accounts_iter)?;
-    let creator_account = next_account_info(accounts_iter)?;
-
-    msg!("Hello1");
-
-    if !creator_account.is_signer {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
-    msg!("Hello2");
-
-    let params = PredictionEventParams::try_from_slice(instruction_data)
-        .map_err(|_| ProgramError::InvalidInstructionData)?;
-
-    msg!("timestamp: {}",  params.expiry_timestamp);
-    msg!("Hello3");
-
-    let mut outcomes = Vec::new();
-    for i in 0..params.num_outcomes {
-        outcomes.push(Outcome {
-            id: i,
-            total_amount: 0,
-        });
-    }
-    msg!("Hello4");
-
-    let event = PredictionEvent {
-        unique_id: params.unique_id,
-        creator: creator_account.key.clone(),
-        expiry_timestamp: params.expiry_timestamp,
-        outcomes: outcomes,
-        total_pool_amount: 0,
-        status: EventStatus::Active,
-        winning_outcome: None,
-    };
- 
-    msg!("Hello5");
-
-    
-    let serialized_data = borsh::to_vec(&event).map_err(|_| ProgramError::BorshIoError(String::from("Serailization failed")))?;
-    let required_len = serialized_data.len();
-    msg!("Serlized ddata length {}", required_len);
-
-    if event_account.data_len() < required_len {
-        event_account.realloc(required_len + 10, false)?;
-    }
-
-    msg!("account size {}", event_account.data_len());
-
-    event_account.data.borrow_mut()[..required_len].copy_from_slice(&serialized_data);
-
-
-    Ok(())
-
-}
-
-// pub fn process_place_bet(
-//     program_id: &Pubkey,
-//     accounts: &[AccountInfo],
-//     event_id: [u8; 32],
-//     outcome_id: u8,
-//     amount: u64,
-// ) -> Result<(), ProgramError> {
-//     let accounts_iter = &mut accounts.iter();
-//     let event_account = next_account_info(accounts_iter)?;
-//     let better_account = next_account_info(accounts_iter)?;
-//     let bet_account = next_account_info(accounts_iter)?;
-
-//     if !better_account.is_signer {
-//         return Err(ProgramError::MissingRequiredSignature);
-//     }
-
-//     let mut event = PredictionEvent::try_from_slice(&event_account.data.borrow())
-//         .map_err(|_| ProgramError::InvalidAccountData)?;
-
-//     if event.status != EventStatus::Active {
-//         return Err(ProgramError::InvalidAccountData);
-//     }
-
-//     if !validate_utxo_ownership(better_account.utxo, better_account.key) {
-//         return Err(ProgramError::InvalidArgument);
-//     }
-
-//     if let Some(outcome) = event.outcomes.get_mut(outcome_id as usize) {
-//         outcome.total_amount += amount;
-//         event.total_pool_amount += amount;
-//     } else {
-//         return Err(ProgramError::InvalidArgument);
-//     }
-
-//     let bet = Bet {
-//         user: *better_account.key,
-//         event_id,
-//         outcome_id,
-//         amount,
-//         timestamp: get_bitcoin_block_height() as i64,
-//     };
-
-//     bet.serialize(&mut *bet_account.data.borrow_mut())
-//         .map_err(|_| ProgramError::InvalidAccountData)?;
-
-//     event.serialize(&mut *event_account.data.borrow_mut())
-//         .map_err(|_| ProgramError::InvalidAccountData)?;
-
-//     Ok(())
-// }
 
 ```
 

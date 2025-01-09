@@ -70,7 +70,7 @@ const GraffitiWallComponent: React.FC = () => {
     }
   }, []);
 
-  
+
 
   // Initialize component
   useEffect(() => {
@@ -78,7 +78,7 @@ const GraffitiWallComponent: React.FC = () => {
     checkAccountCreated();
   }, [checkAccountCreated, checkProgramDeployed]);
 
-  
+
   // Message handlers
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newName = e.target.value;
@@ -115,7 +115,7 @@ const GraffitiWallComponent: React.FC = () => {
         num_outcomes: 'u8',
       }
     };
-    
+
 
     const data = {
       function_number: 1,
@@ -130,19 +130,19 @@ const GraffitiWallComponent: React.FC = () => {
   const expiryTimestamp = 1689422272;
   const numOutcomes = 2;
 
+
   // Create event
   const handleCreateEvent = async () => {
-    if (!wallet.isConnected || !expiryTimestamp) {
-      setError("Wallet must be connected and expiry time must be set");
-      return;
-    }
 
     try {
+      console.log("arr2:")
+      const pubKeyUser: string = await window.unisat.getPublicKey();
+
       const uniqueId = new Uint8Array(32).fill(0); // Fill with your ID bytes
-      const uniqueIdBytes = new TextEncoder().encode(uuidv4().replace("-",""));
+      const uniqueIdBytes = new TextEncoder().encode(uuidv4().replace("-", ""));
       uniqueId.set(uniqueIdBytes.slice(0, 32));
 
-        
+      
       const expiryTimestamp = 1689422272; // 24 hours from now
       const numOutcomes = 3;
 
@@ -152,9 +152,9 @@ const GraffitiWallComponent: React.FC = () => {
         numOutcomes
       );
 
-      
 
-      console.log("arr2:",data)
+
+      console.log("arr2:", data)
 
       const instruction: Instruction = {
         program_id: PubkeyUtil.fromHex(PROGRAM_PUBKEY),
@@ -165,7 +165,7 @@ const GraffitiWallComponent: React.FC = () => {
             is_writable: true
           },
           {
-            pubkey: PubkeyUtil.fromHex(wallet.publicKey!),
+            pubkey: PubkeyUtil.fromHex(pubKeyUser.slice(2,pubKeyUser.length)),
             is_signer: true,
             is_writable: false
           }
@@ -174,12 +174,14 @@ const GraffitiWallComponent: React.FC = () => {
       };
 
       const messageObj: Message = {
-        signers: [PubkeyUtil.fromHex(wallet.publicKey!)],
+        signers: [PubkeyUtil.fromHex(pubKeyUser.slice(2,pubKeyUser.length))],
         instructions: [instruction],
       };
 
       const messageHash = MessageUtil.hash(messageObj);
-      const signature = await wallet.signMessage(Buffer.from(messageHash).toString('hex'));
+      // const signature = await wallet.signMessage(Buffer.from(messageHash).toString('hex'));
+      let signature = await window.unisat.signMessage(Buffer.from(messageHash).toString('hex'));
+
       const signatureBytes = new Uint8Array(Buffer.from(signature, 'base64')).slice(2);
 
 
@@ -194,6 +196,82 @@ const GraffitiWallComponent: React.FC = () => {
       setError(`Failed to create event: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
+
+
+
+  const handleCreateNewToken = async () => {
+    try {
+
+      const pubKeyUser: string = await window.unisat.getPublicKey();
+      const owner = new Uint8Array(32).fill(0); // Fill with your ID bytes
+      const ownerBytes = new TextEncoder().encode(pubKeyUser.slice(2, pubKeyUser.length));
+      owner.set(ownerBytes.slice(0, 32));
+
+      const supply = BigInt(1000000);
+      const ticker = "Bango1T"
+      const decimals = 10;
+
+
+      const schema = {
+        struct: {
+          function_number: 'u8',
+          owner: { array: { type: 'u8', len: 32 } },
+          supply: 'u64',
+          ticker: 'string',
+          decimals: 'u8'
+        }
+      };
+
+
+      const data2 = {
+        function_number: 4,
+        owner: Array.from(owner),
+        supply,
+        ticker,
+        decimals: decimals
+      };
+
+      const serialized_data = borsh.serialize(schema, data2);
+
+      const instruction: Instruction = {
+        program_id: PubkeyUtil.fromHex(PROGRAM_PUBKEY),
+        accounts: [
+          {
+            pubkey: accountPubkey,
+            is_signer: false,
+            is_writable: true
+          }
+        ],
+        data: serialized_data,
+      };
+
+      const messageObj: Message = {
+        signers: [PubkeyUtil.fromHex(pubKeyUser.slice(2, pubKeyUser.length))],
+        instructions: [instruction],
+      };
+
+      const messageHash = MessageUtil.hash(messageObj);
+      // const signature = await wallet.signMessage(Buffer.from(messageHash).toString('hex'));
+      let signature = await window.unisat.signMessage(Buffer.from(messageHash).toString('hex'));
+      const signatureBytes = new Uint8Array(Buffer.from(signature, 'base64')).slice(2);
+
+
+      const result = await client.sendTransaction({
+        version: 0,
+        signatures: [signatureBytes],
+        message: messageObj,
+      });
+
+      console.log(result, "====")
+    }
+
+    catch (error) {
+      console.error('Error creating Token:', error);
+      setError(`Failed to create Token : ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+
+  }
 
 
 
@@ -256,11 +334,11 @@ const GraffitiWallComponent: React.FC = () => {
       });
 
       // let txid = await window.unisat.sendBitcoin("tb1qrn7tvhdf6wnh790384ahj56u0xaa0kqgautnnz",1000);
-      
-      
+
+
       // console.log(txid);
       // return
-      
+
       let utxo = {
         txid: "86e68158dea1986a3e5ed05d646265829f30cf406648b524f9ea9d65bd0be516",
         vout: 0
@@ -274,7 +352,7 @@ const GraffitiWallComponent: React.FC = () => {
         utxo
       );
 
-      
+
       const instruction: Instruction = {
         program_id: PubkeyUtil.fromHex(PROGRAM_PUBKEY),
         accounts: [
@@ -332,14 +410,14 @@ const GraffitiWallComponent: React.FC = () => {
           unique_id: { array: { type: 'u8', len: 32 } },
         }
       };
-      
+
       let data = {
         function_number: 2,
         unique_id: Array.from(uniqueId),
       };
-      
+
       let serialData = borsh.serialize(schema, data);
-      
+
       const instruction: Instruction = {
         program_id: PubkeyUtil.fromHex(PROGRAM_PUBKEY),
         accounts: [
@@ -384,6 +462,7 @@ const GraffitiWallComponent: React.FC = () => {
   const fetchEventData = useCallback(async () => {
     try {
       const account = await client.readAccountInfo(accountPubkey);
+
       if (!account) {
         setError('Account not found.');
         return;
@@ -418,7 +497,7 @@ const GraffitiWallComponent: React.FC = () => {
                                         outcome_id: 'u8',
                                         amount: 'u64',
                                         tx_hex: { array: { type: 'u8' } }, // Vec<u8>
-                                        utxo: { 
+                                        utxo: {
                                           struct: {
                                             txid: { array: { type: 'u8', len: 32 } },
                                             vout: 'u32'
@@ -515,7 +594,7 @@ const GraffitiWallComponent: React.FC = () => {
               <textarea
                 value={message}
                 onChange={handleMessageChange}
-                onKeyDown={()=> {}}
+                onKeyDown={() => { }}
                 placeholder="Your Message (required, max 64 bytes)"
                 className="w-full px-3 py-2 bg-arch-gray text-arch-white rounded-md focus:outline-none focus:ring-2 focus:ring-arch-orange mb-2"
                 required
@@ -551,6 +630,13 @@ const GraffitiWallComponent: React.FC = () => {
               </button>
 
               <button
+                onClick={handleCreateNewToken}
+                className={`w-full font-bold py-2 px-4 rounded-lg transition duration-300 bg-arch-orange text-arch-black hover:bg-arch-white hover:text-arch-orange`}
+              >
+                Create New Token
+              </button>
+
+              <button
                 onClick={fetchEventData}
                 className={`w-full font-bold py-2 px-4 rounded-lg transition duration-300 bg-arch-orange text-arch-black hover:bg-arch-white hover:text-arch-orange`}
               >
@@ -563,7 +649,7 @@ const GraffitiWallComponent: React.FC = () => {
             <div className="bg-arch-black p-6 rounded-lg">
               <h3 className="text-2xl font-bold mb-4 text-arch-white">Wall Messages</h3>
               <div className="space-y-4 max-h-96 overflow-y-auto">
-                
+
               </div>
             </div>
           </div>
