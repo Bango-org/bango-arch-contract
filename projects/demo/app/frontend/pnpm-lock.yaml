@@ -216,8 +216,8 @@ packages:
     peerDependencies:
       react: '>= 16'
 
-  '@bitcoinerlab/secp256k1@1.1.1':
-    resolution: {integrity: sha512-uhjW51WfVLpnHN7+G0saDcM/k9IqcyTbZ+bDgLF3AX8V/a3KXSE9vn7UPBrcdU72tp0J4YPR7BHp2m7MLAZ/1Q==}
+  '@bitcoinerlab/secp256k1@1.2.0':
+    resolution: {integrity: sha512-jeujZSzb3JOZfmJYI0ph1PVpCRV5oaexCgy+RvCXV8XlY+XFB/2n3WOcvBsKLsOw78KYgnQrQWb2HrKE4be88Q==}
 
   '@dao-xyz/borsh@5.2.3':
     resolution: {integrity: sha512-W4iG53Wp7V6vtQhnuOhB3I6U6C0409gDG9eWBBA0hBbM8+hNFilZ0y0ePTOs5DS/n+J8vHS9Rsyb5fHGdUu9Qg==}
@@ -822,8 +822,8 @@ packages:
   bitcoin-address-validation@2.2.3:
     resolution: {integrity: sha512-1uGCGl26Ye8JG5qcExtFLQfuib6qEZWNDo1ZlLlwp/z7ygUFby3IxolgEfgMGaC+LG9csbVASLcH8fRLv7DIOg==}
 
-  bitcoinjs-lib@6.1.6:
-    resolution: {integrity: sha512-Fk8+Vc+e2rMoDU5gXkW9tD+313rhkm5h6N9HfZxXvYU9LedttVvmXKTgd9k5rsQJjkSfsv6XRM8uhJv94SrvcA==}
+  bitcoinjs-lib@6.1.7:
+    resolution: {integrity: sha512-tlf/r2DGMbF7ky1MgUqXHzypYHakkEnm0SZP23CJKIqNY/5uNAnMbFhMJdhjrL/7anfb/U8+AlpdjPWjPnAalg==}
     engines: {node: '>=8.0.0'}
 
   bitcoinjs-message@2.2.0:
@@ -2363,10 +2363,9 @@ snapshots:
     dependencies:
       react: 18.3.1
 
-  '@bitcoinerlab/secp256k1@1.1.1':
+  '@bitcoinerlab/secp256k1@1.2.0':
     dependencies:
-      '@noble/hashes': 1.6.1
-      '@noble/secp256k1': 1.7.1
+      '@noble/curves': 1.7.0
 
   '@dao-xyz/borsh@5.2.3':
     dependencies:
@@ -2922,8 +2921,8 @@ snapshots:
 
   bip322-js@2.0.0:
     dependencies:
-      '@bitcoinerlab/secp256k1': 1.1.1
-      bitcoinjs-lib: 6.1.6
+      '@bitcoinerlab/secp256k1': 1.2.0
+      bitcoinjs-lib: 6.1.7
       bitcoinjs-message: 2.2.0
       ecpair: 2.1.0
       elliptic: 6.6.1
@@ -2950,7 +2949,7 @@ snapshots:
       bech32: 2.0.0
       sha256-uint8array: 0.10.7
 
-  bitcoinjs-lib@6.1.6:
+  bitcoinjs-lib@6.1.7:
     dependencies:
       '@noble/hashes': 1.6.1
       bech32: 2.0.0

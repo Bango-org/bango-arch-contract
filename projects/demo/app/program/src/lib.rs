@@ -1,78 +1,36 @@
-use std::cell::RefMut;
+use std::{cell::RefMut, collections::HashMap};
 
 use arch_program::{
     account::AccountInfo,
-    bitcoin::hex::DisplayHex,
-    entrypoint,
-    entrypoint::ProgramResult,
+    bitcoin::{absolute::LockTime, consensus, transaction::Version, Transaction},
+    entrypoint::{ProgramResult},
+    helper::add_state_transition,
+    input_to_sign::InputToSign,
     msg,
-    program::{get_bitcoin_block_height, next_account_info, validate_utxo_ownership},
+    program::{
+        get_bitcoin_block_height, next_account_info, set_transaction_to_sign,
+        validate_utxo_ownership,
+    },
     program_error::ProgramError,
     pubkey::Pubkey,
+    transaction_to_sign::TransactionToSign,
+    utxo::UtxoMeta,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
+use arch_program::entrypoint;
 
-#[derive(Clone, BorshSerialize, BorshDeserialize, Debug, PartialEq)]
-pub enum EventStatus {
-    Active,
-    Closed,
-    Resolved,
-    Cancelled,
-}
 
-pub enum PredictionMarketError {
-    InvalidInstruction,
-    InsufficientFunds,
-    EventAlreadyExists,
-    EventNotFound,
-    InvalidOutcome,
-    EventNotResolved,
-    EventAlreadyResolved,
-}
+use mint::{initialize_mint, mint_tokens, InitializeMintInput, MintInput};
+use token_account::initialize_balance_account;
+use transfer::{transfer_tokens, TransferInput};
+use types::{*};
 
-#[derive(Clone, BorshSerialize, BorshDeserialize, Debug)]
-pub struct Outcome {
-    pub id: u8,
-    pub total_amount: u64,
-}
+pub mod types;
+pub mod errors;
+pub mod mint;
+pub mod token_account;
+pub mod transfer;
 
-#[derive(Clone, BorshSerialize, BorshDeserialize, Debug)]
-pub struct PredictionEvent {
-    pub unique_id: [u8; 32],
-    pub creator: Pubkey,
-    pub expiry_timestamp: u32,
-    pub outcomes: Vec<Outcome>,
-    pub total_pool_amount: u64,
-    pub status: EventStatus,
-    pub winning_outcome: Option<u8>,
-}
-
-#[derive(BorshSerialize, BorshDeserialize, Debug)]
-pub struct Bet {
-    pub user: Pubkey,
-    pub event_id: [u8; 32],
-    pub outcome_id: u8,
-    pub amount: u64,
-    pub timestamp: i64,
-}
-
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
-pub struct Predictions {
-    pub total_predictions: u32,
-    pub predictions: Vec<PredictionEvent>,
-}
-
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
-pub struct PredictionEventParams {
-    pub unique_id: [u8; 32],
-    pub expiry_timestamp: u32,
-    pub num_outcomes: u8,
-}
-
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
-pub struct ClosePredictionEventParams {
-    pub unique_id: [u8; 32],
-}
 
 entrypoint!(process_instruction);
 
@@ -86,6 +44,8 @@ pub fn process_instruction(
     let function_number = instruction_data[0];
 
     msg!("Hello 1");
+
+    let account_iter = &mut accounts.clone().iter();
 
     match function_number {
         1 => {
@@ -115,6 +75,134 @@ pub fn process_instruction(
             res
         }
 
+        3 => {
+            msg!("Instruction: Bet on Event");
+
+            let params = BetOnPredictionEventParams::try_from_slice(&instruction_data[1..])
+                .map_err(|_| ProgramError::InvalidInstructionData)?;
+
+            let res = process_place_bet(
+                accounts,
+                params.unique_id,
+                params.outcome_id,
+                params.amount,
+                params.tx_hex,
+                params.utxo,
+            );
+
+            res
+        }
+
+
+        4 => {
+            /* -------------------------------------------------------------------------- */
+            /*                               INITIALIZE MINT                              */
+            /* -------------------------------------------------------------------------- */
+            // 1 Account : (owned by program, uninitialized)
+            msg!("Initializing Mint Account ");
+
+            if accounts.len() != 1 {
+                return Err(ProgramError::Custom(502));
+            }
+
+            let account = next_account_info(account_iter)?;
+
+            let initialize_mint_input: InitializeMintInput =
+                borsh::from_slice(&instruction_data[1..])
+                    .map_err(|_e| ProgramError::InvalidArgument)?;
+
+            initialize_mint(account, program_id, initialize_mint_input)?;
+            Ok(())            
+        }
+
+        5 => {
+            /* -------------------------------------------------------------------------- */
+            /*                         INITIALIZE BALANCE ACCOUNT                         */
+            /* -------------------------------------------------------------------------- */
+            // No instruction data needed, only 3 accounts
+            // 1 - Token balance owner (signer, writable)
+            // 2 - Mint account (owned by program and writable)
+            // 3 - Supplied account (owned by program, uninitialized )
+            if accounts.len() != 3 {
+                return Err(ProgramError::Custom(502));
+            }
+
+            let owner_account = next_account_info(account_iter)?;
+
+            let mint_account = next_account_info(account_iter)?;
+
+            let balance_account = next_account_info(account_iter)?;
+
+            initialize_balance_account(owner_account, mint_account, balance_account, program_id)?;
+            Ok(())
+        }
+
+        6 => {
+            /* -------------------------------------------------------------------------- */
+            /*                                 MINT TOKENS                                */
+            /* -------------------------------------------------------------------------- */
+            // 1 - Mint account ( owned by program and writable )
+            // 2 - Balance account ( owned by program and writable )
+            // 3 - Owner account( signer )
+            if accounts.len() != 3 {
+                return Err(ProgramError::Custom(502));
+            }
+
+            let mint_account = next_account_info(account_iter)?;
+
+            let balance_account = next_account_info(account_iter)?;
+
+            let owner_account = next_account_info(account_iter)?;
+
+            let mint_input: MintInput = borsh::from_slice(&instruction_data[1..])
+                .map_err(|_e| ProgramError::InvalidArgument)?;
+
+            mint_tokens(
+                balance_account,
+                mint_account,
+                owner_account,
+                program_id,
+                mint_input,
+            )?;
+            Ok(())
+        }
+
+        7 => {
+            /* -------------------------------------------------------------------------- */
+            /*                               TRANSFER TOKENS                              */
+            /* -------------------------------------------------------------------------- */
+            // 1 - Owner Account ( is_signer )
+            // 2 - Mint Account ( writable and owned by program )
+            // 3 - Sender Account ( writable and owned by program, balance owner is Account 1 )
+            // 4 - Receiver Account ( writable and owned by program )
+
+            if accounts.len() != 4 {
+                return Err(ProgramError::Custom(502));
+            }
+
+            let owner_account = next_account_info(account_iter)?;
+
+            let mint_account = next_account_info(account_iter)?;
+
+            let sender_account = next_account_info(account_iter)?;
+
+            let receiver_account = next_account_info(account_iter)?;
+
+            let transfer_input: TransferInput = borsh::from_slice(&instruction_data[1..])
+                .map_err(|_e| ProgramError::InvalidArgument)?;
+
+            transfer_tokens(
+                owner_account,
+                mint_account,
+                sender_account,
+                receiver_account,
+                program_id,
+                transfer_input,
+            )?;
+            Ok(())
+        }
+        
+
         _ => Err(ProgramError::BorshIoError(String::from(
             "Invalid function call",
         ))),
@@ -131,6 +219,7 @@ pub fn process_create_event(
     let event_account = next_account_info(accounts_iter)?;
     let creator_account = next_account_info(accounts_iter)?;
 
+    msg!("Hello1 {}, {}", creator_account.is_signer, creator_account.is_executable);
     if !creator_account.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
@@ -140,6 +229,7 @@ pub fn process_create_event(
         outcomes.push(Outcome {
             id: i,
             total_amount: 0,
+            bets: HashMap::new(),
         });
     }
 
@@ -152,11 +242,14 @@ pub fn process_create_event(
         status: EventStatus::Active,
         winning_outcome: None,
     };
+    msg!("Hello 1");
 
     let data = event_account.try_borrow_mut_data()?;
+    msg!("Hello 1");
 
     // fetch all events data
     let mut predictions_data = helper_deserialize_predictions(data)?;
+    msg!("Hello 1");
 
     predictions_data.predictions.push(event);
     predictions_data.total_predictions += 1;
@@ -194,6 +287,7 @@ pub fn process_close_event(
 pub fn helper_deserialize_predictions(
     data: RefMut<'_, &mut [u8]>,
 ) -> Result<Predictions, ProgramError> {
+    msg!("Total bytes: {}", data.len());
     let predictions_data = if data.len() > 0 {
         Predictions::try_from_slice(&data).map_err(|e| {
             msg!("Error: Failed to deserialize event data {}", e.to_string());
@@ -229,53 +323,96 @@ pub fn helper_store_predictions(
     Ok(())
 }
 
-// pub fn process_place_bet(
-//     program_id: &Pubkey,
-//     accounts: &[AccountInfo],
-//     event_id: [u8; 32],
-//     outcome_id: u8,
-//     amount: u64,
-// ) -> Result<(), ProgramError> {
-//     let accounts_iter = &mut accounts.iter();
-//     let event_account = next_account_info(accounts_iter)?;
-//     let better_account = next_account_info(accounts_iter)?;
-//     let bet_account = next_account_info(accounts_iter)?;
+pub fn process_place_bet(
+    accounts: &[AccountInfo],
+    unique_id: [u8; 32],
+    outcome_id: u8,
+    amount: u64,
+    tx_hex: Vec<u8>,
+    utxo: UtxoMeta,
+) -> Result<(), ProgramError> {
+    let accounts_iter = &mut accounts.iter();
+    let event_account = next_account_info(accounts_iter)?;
+    let better_account = next_account_info(accounts_iter)?;
 
-//     if !better_account.is_signer {
-//         return Err(ProgramError::MissingRequiredSignature);
-//     }
+    if !better_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
 
-//     let mut event = PredictionEvent::try_from_slice(&event_account.data.borrow())
-//         .map_err(|_| ProgramError::InvalidAccountData)?;
+    let mut events = Predictions::try_from_slice(&event_account.data.borrow())
+        .map_err(|_| ProgramError::InvalidAccountData)?;
 
-//     if event.status != EventStatus::Active {
-//         return Err(ProgramError::InvalidAccountData);
-//     }
+    let mut event = events
+        .predictions
+        .iter_mut()
+        .find(|p| p.unique_id == unique_id)
+        .unwrap();
 
-//     if !validate_utxo_ownership(better_account.utxo, better_account.key) {
-//         return Err(ProgramError::InvalidArgument);
-//     }
+    if event.status != EventStatus::Active {
+        return Err(ProgramError::BorshIoError(String::from("Event is closed.")));
+    }
 
-//     if let Some(outcome) = event.outcomes.get_mut(outcome_id as usize) {
-//         outcome.total_amount += amount;
-//         event.total_pool_amount += amount;
-//     } else {
-//         return Err(ProgramError::InvalidArgument);
-//     }
+    if !validate_utxo_ownership(better_account.utxo, better_account.key) {
+        return Err(ProgramError::InvalidArgument);
+    }
 
-//     let bet = Bet {
-//         user: *better_account.key,
-//         event_id,
-//         outcome_id,
-//         amount,
-//         timestamp: get_bitcoin_block_height() as i64,
-//     };
+    if better_account.utxo.clone() != UtxoMeta::from_slice(&[0; 36]) {
+        msg!("UTXO {:?}", better_account.utxo.clone());
+        return Err(ProgramError::BorshIoError(String::from("No UTXO Passed")));
+    }
 
-//     bet.serialize(&mut *bet_account.data.borrow_mut())
-//         .map_err(|_| ProgramError::InvalidAccountData)?;
+    let fees_tx: Transaction = consensus::deserialize(&tx_hex).unwrap();
 
-//     event.serialize(&mut *event_account.data.borrow_mut())
-//         .map_err(|_| ProgramError::InvalidAccountData)?;
+    let mut tx = Transaction {
+        version: Version::TWO,
+        lock_time: LockTime::ZERO,
+        input: vec![],
+        output: vec![],
+    };
 
-//     Ok(())
-// }
+    add_state_transition(&mut tx, event_account);
+    tx.input.push(fees_tx.input[0].clone());
+
+    let tx_to_sign = TransactionToSign {
+        tx_bytes: &consensus::serialize(&tx),
+        inputs_to_sign: &[InputToSign {
+            index: 0,
+            signer: event_account.key.clone(),
+        }],
+    };
+
+    msg!("tx_to_sign{:?}", tx_to_sign);
+
+    set_transaction_to_sign(accounts, tx_to_sign);
+
+    let bet = Bet {
+        user: better_account.key.clone(),
+        event_id: event.unique_id,
+        outcome_id,
+        amount,
+        tx_hex,
+        utxo,
+        timestamp: get_bitcoin_block_height() as i64,
+    };
+
+    let outcome = event
+        .outcomes
+        .iter_mut()
+        .find(|outcome| outcome.id == outcome_id)
+        .unwrap();
+
+    let bets: Option<&mut Vec<Bet>> = outcome.bets.get_mut(&better_account.key);
+
+    if let Some(bets) = bets {
+        // You now have `bets`, which is a mutable reference to `Vec<Bet>`
+        bets.push(bet);
+    } else {
+        outcome.bets.insert(better_account.key.clone(), vec![bet]);
+    }
+
+    event
+        .serialize(&mut *event_account.data.borrow_mut())
+        .map_err(|_| ProgramError::InvalidAccountData)?;
+
+    Ok(())
+}

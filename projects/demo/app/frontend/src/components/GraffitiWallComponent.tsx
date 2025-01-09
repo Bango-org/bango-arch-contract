@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { RpcConnection, MessageUtil, PubkeyUtil, Instruction, Message } from '@saturnbtcio/arch-sdk';
+import { RpcConnection, MessageUtil, PubkeyUtil, Instruction, Message, UtxoMetaData } from '@saturnbtcio/arch-sdk';
 import { Copy, Check, AlertCircle } from 'lucide-react';
 import { Buffer } from 'buffer';
 import { useWallet } from '../hooks/useWallet';
 import * as borsh from 'borsh';
+import { v4 as uuidv4 } from 'uuid';
+import { request } from 'sats-connect';
 
 // Configure global Buffer for browser environment
 window.Buffer = Buffer;
@@ -137,7 +139,7 @@ const GraffitiWallComponent: React.FC = () => {
 
     try {
       const uniqueId = new Uint8Array(32).fill(0); // Fill with your ID bytes
-      const uniqueIdBytes = new TextEncoder().encode("dasdasdlkqwhjddsasdadadadadaaaaa");
+      const uniqueIdBytes = new TextEncoder().encode(uuidv4().replace("-",""));
       uniqueId.set(uniqueIdBytes.slice(0, 32));
 
         
@@ -180,6 +182,7 @@ const GraffitiWallComponent: React.FC = () => {
       const signature = await wallet.signMessage(Buffer.from(messageHash).toString('hex'));
       const signatureBytes = new Uint8Array(Buffer.from(signature, 'base64')).slice(2);
 
+
       const result = await client.sendTransaction({
         version: 0,
         signatures: [signatureBytes],
@@ -191,6 +194,125 @@ const GraffitiWallComponent: React.FC = () => {
       setError(`Failed to create event: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
+
+
+
+  const serializeBetEventInstruction = (
+    unique_id: Uint8Array,
+    outcome_id: number,
+    amount: number,
+    tx_hex: string,
+    utxo: UtxoMetaData
+  ): Uint8Array => {
+
+    const betSchema = {
+      struct: {
+        function_number: 'u8',
+        unique_id: { array: { type: 'u8', len: 32 } },
+        outcome_id: 'u8',
+        amount: 'u64',
+        tx_hex: { array: { type: 'u8' } },  // Variable length array of u8
+        utxo: {
+          struct: {
+            txid: 'string',
+            vout: 'u32'
+          }
+        }
+      }
+    };
+
+    const data = {
+      function_number: 3,
+      unique_id: Array.from(unique_id), // Your 32-byte array
+      outcome_id: outcome_id,
+      amount: BigInt(amount),  // u64 needs to be BigInt
+      tx_hex: tx_hex,
+      utxo: utxo
+    };
+
+    return borsh.serialize(betSchema, data);
+  };
+
+  // Create event
+  const handleBetEvent = async () => {
+    if (!wallet.isConnected || !expiryTimestamp) {
+      setError("Wallet must be connected and expiry time must be set");
+      return;
+    }
+
+    try {
+      const uniqueId = new Uint8Array(32).fill(0); // Fill with your ID bytes
+      const uniqueIdBytes = new TextEncoder().encode("3e364ca1b9804049b39d71bfd2eee");
+      uniqueId.set(uniqueIdBytes.slice(0, 32));
+
+
+      const response = await request("sendTransfer", {
+        recipients: [
+          {
+            address: "tb1p5vm3478tr966nysql5nls6wg3jr23puy9edlrjygnxsqcuyktehqeyzgxd",
+            amount: Number(20000),
+          },
+        ],
+      });
+
+      // let txid = await window.unisat.sendBitcoin("tb1qrn7tvhdf6wnh790384ahj56u0xaa0kqgautnnz",1000);
+      
+      
+      // console.log(txid);
+      // return
+      
+      let utxo = {
+        txid: "86e68158dea1986a3e5ed05d646265829f30cf406648b524f9ea9d65bd0be516",
+        vout: 0
+      }
+
+      const data = serializeBetEventInstruction(
+        uniqueId,
+        1,
+        100,
+        utxo.txid,
+        utxo
+      );
+
+      
+      const instruction: Instruction = {
+        program_id: PubkeyUtil.fromHex(PROGRAM_PUBKEY),
+        accounts: [
+          {
+            pubkey: accountPubkey,
+            is_signer: false,
+            is_writable: true
+          },
+          {
+            pubkey: PubkeyUtil.fromHex(wallet.publicKey!),
+            is_signer: true,
+            is_writable: false
+          }
+        ],
+        data: data,
+      };
+
+      const messageObj: Message = {
+        signers: [PubkeyUtil.fromHex(wallet.publicKey!)],
+        instructions: [instruction],
+      };
+
+      const messageHash = MessageUtil.hash(messageObj);
+      const signature = await wallet.signMessage(Buffer.from(messageHash).toString('hex'));
+      const signatureBytes = new Uint8Array(Buffer.from(signature, 'base64')).slice(2);
+
+      const result = await client.sendTransaction({
+        version: 0,
+        signatures: [signatureBytes],
+        message: messageObj,
+      });
+
+    } catch (error) {
+      console.error('Error creating event:', error);
+      setError(`Failed to create event: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
 
 
   const handleCloseEvent = async () => {
@@ -276,20 +398,45 @@ const GraffitiWallComponent: React.FC = () => {
                 type: {
                   struct: {
                     unique_id: { array: { type: 'u8', len: 32 } },
-                    creator: { array: { type: 'u8', len: 32 } }, // Pubkey is [u8; 32]
+                    creator: { array: { type: 'u8', len: 32 } }, // Pubkey
                     expiry_timestamp: 'u32',
                     outcomes: {
                       array: {
                         type: {
                           struct: {
                             id: 'u8',
-                            total_amount: 'u64'
+                            total_amount: 'u64',
+                            bets: {
+                              map: {
+                                key: { array: { type: 'u8', len: 32 } }, // Pubkey as key
+                                value: {
+                                  array: {
+                                    type: {
+                                      struct: {
+                                        user: { array: { type: 'u8', len: 32 } }, // Pubkey
+                                        event_id: { array: { type: 'u8', len: 32 } },
+                                        outcome_id: 'u8',
+                                        amount: 'u64',
+                                        tx_hex: { array: { type: 'u8' } }, // Vec<u8>
+                                        utxo: { 
+                                          struct: {
+                                            txid: { array: { type: 'u8', len: 32 } },
+                                            vout: 'u32'
+                                          }
+                                        },
+                                        timestamp: 'i64'
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
                           }
                         }
                       }
                     },
                     total_pool_amount: 'u64',
-                    status: 'u8', // EventStatus enum as u8
+                    status: 'u8', // EventStatus enum
                     winning_outcome: { option: 'u8' }
                   }
                 }
@@ -382,6 +529,15 @@ const GraffitiWallComponent: React.FC = () => {
                 disabled={!isFormValid}
               >
                 Create Predition
+              </button>
+              <button
+                onClick={handleBetEvent}
+                className={`w-full font-bold py-2 px-4 rounded-lg transition duration-300 ${isFormValid
+                  ? 'bg-arch-orange text-arch-black hover:bg-arch-white hover:text-arch-orange'
+                  : 'bg-gray-500 text-gray-300 cursor-not-allowed'
+                  }`}
+              >
+                Bet
               </button>
               <button
                 onClick={handleCloseEvent}
