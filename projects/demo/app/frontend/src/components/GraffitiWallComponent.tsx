@@ -1,19 +1,57 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { RpcConnection, MessageUtil, PubkeyUtil, Instruction, Message, UtxoMetaData } from '@saturnbtcio/arch-sdk';
+import { RpcConnection, MessageUtil, PubkeyUtil, Instruction, Message, UtxoMetaSchema } from '@saturnbtcio/arch-sdk';
 import { Copy, Check, AlertCircle } from 'lucide-react';
 import { Buffer } from 'buffer';
 import { useWallet } from '../hooks/useWallet';
 import * as borsh from 'borsh';
-import { v4 as uuidv4 } from 'uuid';
-import { request } from 'sats-connect';
+import { v4 as uuidv4 } from "uuid"
 
-// Configure global Buffer for browser environment
 window.Buffer = Buffer;
 
 // Environment variables for configuration
 const client = new RpcConnection((import.meta as any).env.VITE_RPC_URL || 'http://localhost:9002');
 const PROGRAM_PUBKEY = (import.meta as any).env.VITE_PROGRAM_PUBKEY;
 const WALL_ACCOUNT_PUBKEY = (import.meta as any).env.VITE_WALL_ACCOUNT_PUBKEY;
+
+class GraffitiMessage {
+  constructor(
+    public timestamp: number,
+    public name: string,
+    public message: string
+  ) { }
+
+  static schema = new Map([
+    [
+      GraffitiMessage,
+      {
+        kind: 'struct',
+        fields: [
+          ['timestamp', 'i64'],
+          ['name', ['u8', 16]],
+          ['message', ['u8', 64]]
+        ]
+      }
+    ]
+  ]);
+}
+
+// Define the schema for the wall containing messages
+class GraffitiWall {
+  constructor(public messages: GraffitiMessage[]) { }
+
+  static schema = new Map([
+    [
+      GraffitiWall,
+      {
+        kind: 'struct',
+        fields: [
+          ['messages', [GraffitiMessage]]
+        ]
+      }
+    ]
+  ]);
+}
+
 
 
 const GraffitiWallComponent: React.FC = () => {
@@ -22,6 +60,7 @@ const GraffitiWallComponent: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isAccountCreated, setIsAccountCreated] = useState(false);
   const [isProgramDeployed, setIsProgramDeployed] = useState(false);
+  const [wallData, setWallData] = useState<GraffitiMessage[]>([]);
 
   // Form state
   const [message, setMessage] = useState('');
@@ -71,6 +110,59 @@ const GraffitiWallComponent: React.FC = () => {
   }, []);
 
 
+  // Fetch and parse wall messages
+  const fetchWallData = useCallback(async () => {
+    try {
+      const userAccount = await client.readAccountInfo(accountPubkey);
+      if (!userAccount) {
+        setError('Account not found.');
+        return;
+      }
+      const wallData = userAccount.data;
+
+      console.log(`Wall data: ${wallData}`);
+
+      // If data is empty or invalid length, just set empty messages without error
+      if (!wallData || wallData.length < 4) {
+        setWallData([]);
+        setError(null); // Clear any existing errors
+        return;
+      }
+
+      const schema = {
+        struct: {
+          owner: { array: { type: 'u8', len: 32 } }, // 32-byte array
+          status: 'u8', // Enum as u8 (MintStatus)
+          supply: 'u64', // u64 as BigInt
+          circulating_supply: 'u64', // u64 as BigInt
+          ticker: 'string', // Token ticker (String)
+          decimals: 'u8', // Unsigned 8-bit integer
+          token_metadata: {
+            map: {
+              key: 'string', // Key is a string
+              value: { array: { type: 'u8', len: 32 } }, // Value is a 32-byte array
+            },
+          },
+          balances: {
+            map: {
+              key: { array: { type: 'u8', len: 32 } }, // Key is a 32-byte array (Pubkey)
+              value: 'u64', // Value is u64 (BigInt)
+            },
+          },
+        },
+      };
+      
+
+      const data = borsh.deserialize(schema, wallData);
+
+      console.log(data);
+
+
+    } catch (error) {
+      console.error('Error fetching wall data:', error);
+      setError(`Failed to fetch wall data: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }, []);
 
   // Initialize component
   useEffect(() => {
@@ -78,6 +170,15 @@ const GraffitiWallComponent: React.FC = () => {
     checkAccountCreated();
   }, [checkAccountCreated, checkProgramDeployed]);
 
+  // Set up polling for wall data
+  useEffect(() => {
+    if (!isAccountCreated) return;
+
+    fetchWallData();
+    
+    const interval = setInterval(fetchWallData, 5000);
+    return () => clearInterval(interval);
+  }, [isAccountCreated, fetchWallData]);
 
   // Message handlers
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -101,58 +202,38 @@ const GraffitiWallComponent: React.FC = () => {
   };
 
 
-  // Serialize create event instruction
-  const serializeCreateEventInstruction = (
-    unique_id: Uint8Array,
-    expiry_timestamp: number,
-    num_outcomes: number
-  ): Uint8Array => {
-    const schema = {
-      struct: {
-        function_number: 'u8',
-        unique_id: { array: { type: 'u8', len: 32 } },
-        expiry_timestamp: 'u32',
-        num_outcomes: 'u8',
-      }
-    };
 
-
-    const data = {
-      function_number: 1,
-      unique_id: Array.from(unique_id),
-      expiry_timestamp,
-      num_outcomes,
-    };
-
-    return borsh.serialize(schema, data);
-  };
-
-  const expiryTimestamp = 1689422272;
-  const numOutcomes = 2;
-
-
-  // Create event
   const handleCreateEvent = async () => {
 
     try {
       console.log("arr2:")
-      const pubKeyUser: string = await window.unisat.getPublicKey();
 
       const uniqueId = new Uint8Array(32).fill(0); // Fill with your ID bytes
-      const uniqueIdBytes = new TextEncoder().encode(uuidv4().replace("-", ""));
+      const uniqueIdBytes = new TextEncoder().encode(uuidv4().replaceAll("-", ""));
       uniqueId.set(uniqueIdBytes.slice(0, 32));
 
-      
+
       const expiryTimestamp = 1689422272; // 24 hours from now
       const numOutcomes = 3;
 
-      const data = serializeCreateEventInstruction(
-        uniqueId,
-        expiryTimestamp,
-        numOutcomes
-      );
+      const schema = {
+        struct: {
+          function_number: 'u8',
+          unique_id: { array: { type: 'u8', len: 32 } },
+          expiry_timestamp: 'u32',
+          num_outcomes: 'u8',
+        }
+      };
 
 
+      let dataStruct = {
+        function_number: 1,
+        unique_id: Array.from(uniqueId),
+        expiry_timestamp: expiryTimestamp,
+        num_outcomes: numOutcomes,
+      };
+
+      const data = borsh.serialize(schema, dataStruct);
 
       console.log("arr2:", data)
 
@@ -165,7 +246,7 @@ const GraffitiWallComponent: React.FC = () => {
             is_writable: true
           },
           {
-            pubkey: PubkeyUtil.fromHex(pubKeyUser.slice(2,pubKeyUser.length)),
+            pubkey: PubkeyUtil.fromHex(wallet.publicKey!),
             is_signer: true,
             is_writable: false
           }
@@ -174,14 +255,13 @@ const GraffitiWallComponent: React.FC = () => {
       };
 
       const messageObj: Message = {
-        signers: [PubkeyUtil.fromHex(pubKeyUser.slice(2,pubKeyUser.length))],
+        signers: [PubkeyUtil.fromHex(wallet.publicKey!)],
         instructions: [instruction],
       };
 
       const messageHash = MessageUtil.hash(messageObj);
-      // const signature = await wallet.signMessage(Buffer.from(messageHash).toString('hex'));
-      let signature = await window.unisat.signMessage(Buffer.from(messageHash).toString('hex'));
-
+      const signature = await wallet.signMessage(Buffer.from(messageHash).toString('hex'));
+      // let signature = await window.unisat.signMessage(Buffer.from(messageHash).toString('hex'));
       const signatureBytes = new Uint8Array(Buffer.from(signature, 'base64')).slice(2);
 
 
@@ -198,13 +278,11 @@ const GraffitiWallComponent: React.FC = () => {
   };
 
 
-
   const handleCreateNewToken = async () => {
     try {
 
-      const pubKeyUser: string = await window.unisat.getPublicKey();
       const owner = new Uint8Array(32).fill(0); // Fill with your ID bytes
-      const ownerBytes = new TextEncoder().encode(pubKeyUser.slice(2, pubKeyUser.length));
+      const ownerBytes = new TextEncoder().encode(wallet.publicKey!);
       owner.set(ownerBytes.slice(0, 32));
 
       const supply = BigInt(1000000);
@@ -246,13 +324,13 @@ const GraffitiWallComponent: React.FC = () => {
       };
 
       const messageObj: Message = {
-        signers: [PubkeyUtil.fromHex(pubKeyUser.slice(2, pubKeyUser.length))],
+        signers: [PubkeyUtil.fromHex(wallet.publicKey!)],
         instructions: [instruction],
       };
 
       const messageHash = MessageUtil.hash(messageObj);
-      // const signature = await wallet.signMessage(Buffer.from(messageHash).toString('hex'));
-      let signature = await window.unisat.signMessage(Buffer.from(messageHash).toString('hex'));
+      const signature = await wallet.signMessage(Buffer.from(messageHash).toString('hex'));
+      // let signature = await window.unisat.signMessage(Buffer.from(messageHash).toString('hex'));
       const signatureBytes = new Uint8Array(Buffer.from(signature, 'base64')).slice(2);
 
 
@@ -274,149 +352,34 @@ const GraffitiWallComponent: React.FC = () => {
   }
 
 
-
-  const serializeBetEventInstruction = (
-    unique_id: Uint8Array,
-    outcome_id: number,
-    amount: number,
-    tx_hex: string,
-    utxo: UtxoMetaData
-  ): Uint8Array => {
-
-    const betSchema = {
-      struct: {
-        function_number: 'u8',
-        unique_id: { array: { type: 'u8', len: 32 } },
-        outcome_id: 'u8',
-        amount: 'u64',
-        tx_hex: { array: { type: 'u8' } },  // Variable length array of u8
-        utxo: {
-          struct: {
-            txid: 'string',
-            vout: 'u32'
-          }
-        }
-      }
-    };
-
-    const data = {
-      function_number: 3,
-      unique_id: Array.from(unique_id), // Your 32-byte array
-      outcome_id: outcome_id,
-      amount: BigInt(amount),  // u64 needs to be BigInt
-      tx_hex: tx_hex,
-      utxo: utxo
-    };
-
-    return borsh.serialize(betSchema, data);
-  };
-
-  // Create event
-  const handleBetEvent = async () => {
-    if (!wallet.isConnected || !expiryTimestamp) {
-      setError("Wallet must be connected and expiry time must be set");
-      return;
-    }
+  const handleCreateBalanceAccount = async () => {
 
     try {
+      
+      // const sendCoin = await Wallet.request()
+      console.log(wallet.address)
+      // const contractAddress = await client.getAccountAddress(PubkeyUtil.fromHex(PROGRAM_PUBKEY))
+
       const uniqueId = new Uint8Array(32).fill(0); // Fill with your ID bytes
-      const uniqueIdBytes = new TextEncoder().encode("3e364ca1b9804049b39d71bfd2eee");
-      uniqueId.set(uniqueIdBytes.slice(0, 32));
-
-
-      const response = await request("sendTransfer", {
-        recipients: [
-          {
-            address: "tb1p5vm3478tr966nysql5nls6wg3jr23puy9edlrjygnxsqcuyktehqeyzgxd",
-            amount: Number(20000),
-          },
-        ],
-      });
-
-      // let txid = await window.unisat.sendBitcoin("tb1qrn7tvhdf6wnh790384ahj56u0xaa0kqgautnnz",1000);
-
-
-      // console.log(txid);
-      // return
-
-      let utxo = {
-        txid: "86e68158dea1986a3e5ed05d646265829f30cf406648b524f9ea9d65bd0be516",
-        vout: 0
-      }
-
-      const data = serializeBetEventInstruction(
-        uniqueId,
-        1,
-        100,
-        utxo.txid,
-        utxo
-      );
-
-
-      const instruction: Instruction = {
-        program_id: PubkeyUtil.fromHex(PROGRAM_PUBKEY),
-        accounts: [
-          {
-            pubkey: accountPubkey,
-            is_signer: false,
-            is_writable: true
-          },
-          {
-            pubkey: PubkeyUtil.fromHex(wallet.publicKey!),
-            is_signer: true,
-            is_writable: false
-          }
-        ],
-        data: data,
-      };
-
-      const messageObj: Message = {
-        signers: [PubkeyUtil.fromHex(wallet.publicKey!)],
-        instructions: [instruction],
-      };
-
-      const messageHash = MessageUtil.hash(messageObj);
-      const signature = await wallet.signMessage(Buffer.from(messageHash).toString('hex'));
-      const signatureBytes = new Uint8Array(Buffer.from(signature, 'base64')).slice(2);
-
-      const result = await client.sendTransaction({
-        version: 0,
-        signatures: [signatureBytes],
-        message: messageObj,
-      });
-
-    } catch (error) {
-      console.error('Error creating event:', error);
-      setError(`Failed to create event: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  };
-
-
-
-  const handleCloseEvent = async () => {
-    if (!wallet.isConnected) {
-      setError("Wallet must be connected");
-      return;
-    }
-
-    try {
-      const uniqueId = new Uint8Array(32).fill(0); // Fill with your ID bytes
-      const uniqueIdBytes = new TextEncoder().encode("dasdasdlkqwhjddsasdadadadadaaaaa");
+      const uniqueIdBytes = new TextEncoder().encode(uuidv4().replaceAll("-", ""));
       uniqueId.set(uniqueIdBytes.slice(0, 32));
 
       const schema = {
         struct: {
           function_number: 'u8',
-          unique_id: { array: { type: 'u8', len: 32 } },
+          uid: { array: { type: 'u8', len: 32 } },
+          amount: 'u64',
         }
       };
 
-      let data = {
-        function_number: 2,
-        unique_id: Array.from(uniqueId),
+      console.log()
+      const data2 = {
+        function_number: 5,
+        uid: uniqueId,
+        amount: BigInt(10000),
       };
 
-      let serialData = borsh.serialize(schema, data);
+      const serialized_data = borsh.serialize(schema, data2);
 
       const instruction: Instruction = {
         program_id: PubkeyUtil.fromHex(PROGRAM_PUBKEY),
@@ -424,7 +387,7 @@ const GraffitiWallComponent: React.FC = () => {
           {
             pubkey: accountPubkey,
             is_signer: false,
-            is_writable: true
+            is_writable: true,
           },
           {
             pubkey: PubkeyUtil.fromHex(wallet.publicKey!),
@@ -432,7 +395,7 @@ const GraffitiWallComponent: React.FC = () => {
             is_writable: false
           }
         ],
-        data: serialData,
+        data: serialized_data,
       };
 
       const messageObj: Message = {
@@ -442,15 +405,15 @@ const GraffitiWallComponent: React.FC = () => {
 
       const messageHash = MessageUtil.hash(messageObj);
       const signature = await wallet.signMessage(Buffer.from(messageHash).toString('hex'));
+      // let signature = await window.unisat.signMessage(Buffer.from(messageHash).toString('hex'));
       const signatureBytes = new Uint8Array(Buffer.from(signature, 'base64')).slice(2);
+
 
       const result = await client.sendTransaction({
         version: 0,
         signatures: [signatureBytes],
         message: messageObj,
       });
-
-      console.log(result);
 
     } catch (error) {
       console.error('Error creating event:', error);
@@ -459,80 +422,104 @@ const GraffitiWallComponent: React.FC = () => {
   };
 
 
-  const fetchEventData = useCallback(async () => {
-    try {
-      const account = await client.readAccountInfo(accountPubkey);
 
-      if (!account) {
-        setError('Account not found.');
-        return;
-      }
 
-      const eventData = borsh.deserialize(
-        {
-          struct: {
-            total_predictions: 'u32',
-            predictions: {
-              array: {
-                type: {
-                  struct: {
-                    unique_id: { array: { type: 'u8', len: 32 } },
-                    creator: { array: { type: 'u8', len: 32 } }, // Pubkey
-                    expiry_timestamp: 'u32',
-                    outcomes: {
-                      array: {
-                        type: {
-                          struct: {
-                            id: 'u8',
-                            total_amount: 'u64',
-                            bets: {
-                              map: {
-                                key: { array: { type: 'u8', len: 32 } }, // Pubkey as key
-                                value: {
-                                  array: {
-                                    type: {
-                                      struct: {
-                                        user: { array: { type: 'u8', len: 32 } }, // Pubkey
-                                        event_id: { array: { type: 'u8', len: 32 } },
-                                        outcome_id: 'u8',
-                                        amount: 'u64',
-                                        tx_hex: { array: { type: 'u8' } }, // Vec<u8>
-                                        utxo: {
-                                          struct: {
-                                            txid: { array: { type: 'u8', len: 32 } },
-                                            vout: 'u32'
-                                          }
-                                        },
-                                        timestamp: 'i64'
-                                      }
-                                    }
-                                  }
-                                }
-                              }
-                            }
-                          }
-                        }
-                      }
-                    },
-                    total_pool_amount: 'u64',
-                    status: 'u8', // EventStatus enum
-                    winning_outcome: { option: 'u8' }
-                  }
-                }
-              }
-            }
-          }
-        },
-        account.data
-      );
-
-      console.log(eventData)
-    } catch (error) {
-      console.error('Error fetching event data:', error);
-      setError(`Failed to fetch event data: ${error instanceof Error ? error.message : String(error)}`);
+  const handleAddToWall = async () => {
+    if (!message.trim() || !name.trim() || !isAccountCreated || !wallet.isConnected) {
+      setError("Name and message are required, account must be created, and wallet must be connected.");
+      return;
     }
-  }, []);
 
+    try {
+      const data = serializeGraffitiData(name, message);
+
+      const instruction: Instruction = {
+        program_id: PubkeyUtil.fromHex(PROGRAM_PUBKEY),
+        accounts: [
+          {
+            pubkey: PubkeyUtil.fromHex(wallet.publicKey!),
+            is_signer: true,
+            is_writable: false
+          },
+          {
+            pubkey: accountPubkey,
+            is_signer: false,
+            is_writable: true
+          },
+        ],
+        data: new Uint8Array(data),
+      };
+
+      const messageObj: Message = {
+        signers: [PubkeyUtil.fromHex(wallet.publicKey!)],
+        instructions: [instruction],
+      };
+
+      console.log(`Pubkey: ${PubkeyUtil.fromHex(wallet.publicKey!)}`);
+      const messageBytes = MessageUtil.serialize(messageObj);
+      console.log(`Message hash: ${MessageUtil.hash(messageObj).toString()}`);
+      const signature = await wallet.signMessage(Buffer.from(MessageUtil.hash(messageObj)).toString('hex'));
+      console.log(`Signature: ${signature}`);
+
+      // Take last 64 bytes of base64 decoded signature
+      const signatureBytes = new Uint8Array(Buffer.from(signature, 'base64')).slice(2);
+      console.log(`Signature bytes: ${signatureBytes}`);
+
+      const result = await client.sendTransaction({
+        version: 0,
+        signatures: [signatureBytes],
+        message: messageObj,
+      });
+
+      if (result) {
+        await fetchWallData();
+        setMessage('');
+        setName('');
+      }
+    } catch (error) {
+      console.error('Error adding to wall:', error);
+      setError(`Failed to add to wall: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
+  const serializeGraffitiData = (name: string, message: string): number[] => {
+    // Create fixed-size arrays
+    const nameArray = new Uint8Array(16).fill(0);
+    const messageArray = new Uint8Array(64).fill(0);
+
+    // Convert strings to bytes
+    const nameBytes = new TextEncoder().encode(name);
+    const messageBytes = new TextEncoder().encode(message);
+
+    // Copy bytes into fixed-size arrays (will truncate if too long)
+    nameArray.set(nameBytes.slice(0, 16));
+    messageArray.set(messageBytes.slice(0, 64));
+
+    // Create the params object matching the Rust struct
+    const params = {
+      name: Array.from(nameArray),
+      message: Array.from(messageArray)
+    };
+
+    // Define the schema for borsh serialization
+    const schema = {
+      struct: {
+        name: { array: { type: 'u8', len: 16 } },
+        message: { array: { type: 'u8', len: 64 } }
+      }
+    };
+
+    return Array.from(borsh.serialize(schema, params));
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (isFormValid) {
+        handleAddToWall();
+      }
+    }
+  };
 
 
   return (
@@ -594,7 +581,7 @@ const GraffitiWallComponent: React.FC = () => {
               <textarea
                 value={message}
                 onChange={handleMessageChange}
-                onKeyDown={() => { }}
+                onKeyDown={handleKeyDown}
                 placeholder="Your Message (required, max 64 bytes)"
                 className="w-full px-3 py-2 bg-arch-gray text-arch-white rounded-md focus:outline-none focus:ring-2 focus:ring-arch-orange mb-2"
                 required
@@ -605,42 +592,27 @@ const GraffitiWallComponent: React.FC = () => {
                   ? 'bg-arch-orange text-arch-black hover:bg-arch-white hover:text-arch-orange'
                   : 'bg-gray-500 text-gray-300 cursor-not-allowed'
                   }`}
-                disabled={!isFormValid}
               >
-                Create Predition
+                Create event
               </button>
-              <button
-                onClick={handleBetEvent}
-                className={`w-full font-bold py-2 px-4 rounded-lg transition duration-300 ${isFormValid
-                  ? 'bg-arch-orange text-arch-black hover:bg-arch-white hover:text-arch-orange'
-                  : 'bg-gray-500 text-gray-300 cursor-not-allowed'
-                  }`}
-              >
-                Bet
-              </button>
-              <button
-                onClick={handleCloseEvent}
-                className={`w-full font-bold py-2 px-4 rounded-lg transition duration-300 ${isFormValid
-                  ? 'bg-arch-orange text-arch-black hover:bg-arch-white hover:text-arch-orange'
-                  : 'bg-gray-500 text-gray-300 cursor-not-allowed'
-                  }`}
-                disabled={!isFormValid}
-              >
-                Close Predition
-              </button>
-
               <button
                 onClick={handleCreateNewToken}
-                className={`w-full font-bold py-2 px-4 rounded-lg transition duration-300 bg-arch-orange text-arch-black hover:bg-arch-white hover:text-arch-orange`}
+                className={`w-full font-bold py-2 px-4 rounded-lg transition duration-300 ${isFormValid
+                  ? 'bg-arch-orange text-arch-black hover:bg-arch-white hover:text-arch-orange'
+                  : 'bg-gray-500 text-gray-300 cursor-not-allowed'
+                  }`}
               >
-                Create New Token
+                Create Token
               </button>
 
               <button
-                onClick={fetchEventData}
-                className={`w-full font-bold py-2 px-4 rounded-lg transition duration-300 bg-arch-orange text-arch-black hover:bg-arch-white hover:text-arch-orange`}
+                onClick={handleCreateBalanceAccount}
+                className={`w-full font-bold py-2 px-4 rounded-lg transition duration-300 ${isFormValid
+                  ? 'bg-arch-orange text-arch-black hover:bg-arch-white hover:text-arch-orange'
+                  : 'bg-gray-500 text-gray-300 cursor-not-allowed'
+                  }`}
               >
-                Fetch Event
+                Mint Token
               </button>
             </div>
           </div>
@@ -649,7 +621,12 @@ const GraffitiWallComponent: React.FC = () => {
             <div className="bg-arch-black p-6 rounded-lg">
               <h3 className="text-2xl font-bold mb-4 text-arch-white">Wall Messages</h3>
               <div className="space-y-4 max-h-96 overflow-y-auto">
-
+                {wallData.map((item, index) => (
+                  <div key={index} className="bg-arch-gray p-3 rounded-lg">
+                    <p className="font-bold text-arch-orange">{new Date(item.timestamp * 1000).toLocaleString()}</p>
+                    <p className="text-arch-white"><span className="font-semibold">{item.name}:</span> {item.message}</p>
+                  </div>
+                ))}
               </div>
             </div>
           </div>

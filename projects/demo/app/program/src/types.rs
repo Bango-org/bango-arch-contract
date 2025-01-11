@@ -63,6 +63,13 @@ pub struct BetOnPredictionEventParams {
     pub utxo: UtxoMeta,
 }
 
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+pub struct MintTokenParams {
+    pub uid: [u8; 32],
+    pub amount: u64
+}
+
+
 #[derive(Clone, BorshSerialize, BorshDeserialize, Debug, PartialEq)]
 pub enum EventStatus {
     Active,

@@ -1,0 +1,4 @@
+bitcoind -regtest -daemon   
+bitcoin-cli -regtest stop 
+bitcoin-cli -regtest -rpcwallet=testwallet getbalance   
+bitcoin-cli -regtest -generate 100                                                                       

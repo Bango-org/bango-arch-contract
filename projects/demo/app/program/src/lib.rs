@@ -2,8 +2,8 @@ use std::{cell::RefMut, collections::HashMap};
 
 use arch_program::{
     account::AccountInfo,
-    bitcoin::{absolute::LockTime, consensus, transaction::Version, Transaction},
-    entrypoint::{ProgramResult},
+    bitcoin::{absolute::LockTime, amount, consensus, transaction::Version, Transaction},
+    entrypoint::ProgramResult,
     helper::add_state_transition,
     input_to_sign::InputToSign,
     msg,
@@ -20,7 +20,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use arch_program::entrypoint;
 
 
-use mint::{initialize_mint, mint_tokens, InitializeMintInput, MintInput};
+use mint::{burn_tokens, initialize_mint, mint_tokens, InitializeMintInput};
 use token_account::initialize_balance_account;
 use transfer::{transfer_tokens, TransferInput};
 use types::{*};
@@ -43,7 +43,7 @@ pub fn process_instruction(
 
     let function_number = instruction_data[0];
 
-    msg!("Hello 1");
+    msg!("Function Called {}", function_number);
 
     let account_iter = &mut accounts.clone().iter();
 
@@ -116,92 +116,64 @@ pub fn process_instruction(
         }
 
         5 => {
-            /* -------------------------------------------------------------------------- */
-            /*                         INITIALIZE BALANCE ACCOUNT                         */
-            /* -------------------------------------------------------------------------- */
-            // No instruction data needed, only 3 accounts
-            // 1 - Token balance owner (signer, writable)
-            // 2 - Mint account (owned by program and writable)
-            // 3 - Supplied account (owned by program, uninitialized )
-            if accounts.len() != 3 {
-                return Err(ProgramError::Custom(502));
-            }
+            msg!("Mint TOkens");
 
-            let owner_account = next_account_info(account_iter)?;
-
-            let mint_account = next_account_info(account_iter)?;
-
-            let balance_account = next_account_info(account_iter)?;
-
-            initialize_balance_account(owner_account, mint_account, balance_account, program_id)?;
-            Ok(())
-        }
-
-        6 => {
             /* -------------------------------------------------------------------------- */
             /*                                 MINT TOKENS                                */
             /* -------------------------------------------------------------------------- */
             // 1 - Mint account ( owned by program and writable )
             // 2 - Balance account ( owned by program and writable )
             // 3 - Owner account( signer )
-            if accounts.len() != 3 {
+            if accounts.len() != 2 {
                 return Err(ProgramError::Custom(502));
             }
 
-            let mint_account = next_account_info(account_iter)?;
-
-            let balance_account = next_account_info(account_iter)?;
+            let token_account = next_account_info(account_iter)?;
 
             let owner_account = next_account_info(account_iter)?;
 
-            let mint_input: MintInput = borsh::from_slice(&instruction_data[1..])
+            let mint_params: MintTokenParams = borsh::from_slice(&instruction_data[1..])
                 .map_err(|_e| ProgramError::InvalidArgument)?;
-
+            
             mint_tokens(
-                balance_account,
-                mint_account,
-                owner_account,
-                program_id,
-                mint_input,
+                token_account,
+                owner_account.key,
+                mint_params.amount
             )?;
+            
             Ok(())
         }
 
-        7 => {
-            /* -------------------------------------------------------------------------- */
-            /*                               TRANSFER TOKENS                              */
-            /* -------------------------------------------------------------------------- */
-            // 1 - Owner Account ( is_signer )
-            // 2 - Mint Account ( writable and owned by program )
-            // 3 - Sender Account ( writable and owned by program, balance owner is Account 1 )
-            // 4 - Receiver Account ( writable and owned by program )
 
-            if accounts.len() != 4 {
+
+        6 => {
+            msg!("Burn TOkens");
+
+            /* -------------------------------------------------------------------------- */
+            /*                                 Burn TOKENS                                */
+            /* -------------------------------------------------------------------------- */
+            // 1 - Mint account ( owned by program and writable )
+            // 2 - Balance account ( owned by program and writable )
+            // 3 - Owner account( signer )
+            if accounts.len() != 2 {
                 return Err(ProgramError::Custom(502));
             }
 
+            let token_account = next_account_info(account_iter)?;
+
             let owner_account = next_account_info(account_iter)?;
 
-            let mint_account = next_account_info(account_iter)?;
-
-            let sender_account = next_account_info(account_iter)?;
-
-            let receiver_account = next_account_info(account_iter)?;
-
-            let transfer_input: TransferInput = borsh::from_slice(&instruction_data[1..])
+            let mint_params: MintTokenParams = borsh::from_slice(&instruction_data[1..])
                 .map_err(|_e| ProgramError::InvalidArgument)?;
-
-            transfer_tokens(
-                owner_account,
-                mint_account,
-                sender_account,
-                receiver_account,
-                program_id,
-                transfer_input,
+            
+            burn_tokens(
+                token_account,
+                owner_account.key,
+                mint_params.amount
             )?;
+            
             Ok(())
         }
-        
 
         _ => Err(ProgramError::BorshIoError(String::from(
             "Invalid function call",
@@ -242,14 +214,11 @@ pub fn process_create_event(
         status: EventStatus::Active,
         winning_outcome: None,
     };
-    msg!("Hello 1");
 
     let data = event_account.try_borrow_mut_data()?;
-    msg!("Hello 1");
 
     // fetch all events data
     let mut predictions_data = helper_deserialize_predictions(data)?;
-    msg!("Hello 1");
 
     predictions_data.predictions.push(event);
     predictions_data.total_predictions += 1;

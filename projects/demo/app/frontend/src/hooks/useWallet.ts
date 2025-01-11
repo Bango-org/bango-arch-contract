@@ -1,8 +1,12 @@
 import { useState } from 'react';
 import { AddressPurpose, request, MessageSigningProtocols } from 'sats-connect';
+import Wallet from "sats-connect";
 import { generatePrivateKey, generatePubkeyFromPrivateKey, hexToUint8Array } from '../utils/cryptoHelpers';
 import * as secp256k1 from 'noble-secp256k1';
-import Wallet from 'sats-connect';
+import { PubkeyUtil, RpcConnection } from '@saturnbtcio/arch-sdk';
+import axios from 'axios';
+
+const client = new RpcConnection((import.meta as any).env.VITE_RPC_URL || 'http://localhost:9002');
 
 interface WalletState {
   isConnected: boolean;
@@ -10,6 +14,7 @@ interface WalletState {
   privateKey: string | null;
   address: string | null;
 }
+
 
 export function useWallet() {
     const NETWORK = import.meta.env.VITE_NETWORK || 'regtest';
@@ -36,32 +41,32 @@ export function useWallet() {
     const connectRegtest = async () => {
       const privateKey = generatePrivateKey();
       const publicKey = generatePubkeyFromPrivateKey(privateKey);
-      
+      let accountaddr = await client.getAccountAddress(PubkeyUtil.fromHex(publicKey.toString()))
+
       const newState = {
         isConnected: true,
         privateKey,
         publicKey: publicKey.toString(),
-        address: null,
+        address: accountaddr,
       };
       setState(newState);
       localStorage.setItem('walletState', JSON.stringify(newState));
     };
+    
   
     const connectWallet = async () => {    
       try {
-        const result = await Wallet.request('getAddresses', {
+        const result = await Wallet.request('getAccounts', {
           purposes: [AddressPurpose.Ordinals],
           message: 'Connect to Graffiti Wall',
         });
-
-        console.log(result)
-        console.log(`Addresses: ${JSON.stringify(result.result.addresses)}`);
+        console.log(`Addresses: ${JSON.stringify(result.result[0].address)}`);
   
-        if (result.result.addresses && result.result.addresses.length > 0) {
+        if (result.result[0].address) {
           const newState = {
             isConnected: true,
-            address: result.result.addresses[0].address,
-            publicKey: result.result.addresses[0].publicKey,
+            address: result.result[0].address,
+            publicKey: result.result[0].publicKey,
             privateKey: null,
           };
           setState(newState);
