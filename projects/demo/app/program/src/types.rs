@@ -31,9 +31,8 @@ pub struct Bet {
     pub event_id: [u8; 32],
     pub outcome_id: u8,
     pub amount: u64,
-    pub tx_hex: Vec<u8>,
-    pub utxo: UtxoMeta,
     pub timestamp: i64,
+    pub bet_type: BetType
 }
 
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
@@ -56,11 +55,10 @@ pub struct ClosePredictionEventParams {
 
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
 pub struct BetOnPredictionEventParams {
+    pub unused_uid: [u8; 32],
     pub unique_id: [u8; 32],
     pub outcome_id: u8,
-    pub amount: u64,
-    pub tx_hex: Vec<u8>,
-    pub utxo: UtxoMeta,
+    pub amount: u64
 }
 
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
@@ -76,6 +74,12 @@ pub enum EventStatus {
     Closed,
     Resolved,
     Cancelled,
+}
+
+#[derive(Clone, BorshSerialize, BorshDeserialize, Debug, PartialEq)]
+pub enum BetType {
+    SELL,
+    BUY
 }
 
 pub enum PredictionMarketError {

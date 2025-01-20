@@ -76,25 +76,39 @@ pub fn process_instruction(
         }
 
         3 => {
-            msg!("Instruction: Bet on Event");
+            msg!("Instruction: Bet on Event Buy");
 
             let params = BetOnPredictionEventParams::try_from_slice(&instruction_data[1..])
                 .map_err(|_| ProgramError::InvalidInstructionData)?;
 
-            let res = process_place_bet(
+            let res = process_buy_bet(
                 accounts,
                 params.unique_id,
                 params.outcome_id,
                 params.amount,
-                params.tx_hex,
-                params.utxo,
+            );
+
+            res
+        }
+
+        4 => {
+            msg!("Instruction: Bet on Event Sell");
+
+            let params = BetOnPredictionEventParams::try_from_slice(&instruction_data[1..])
+                .map_err(|_| ProgramError::InvalidInstructionData)?;
+
+            let res = process_sell_bet(
+                accounts,
+                params.unique_id,
+                params.outcome_id,
+                params.amount,
             );
 
             res
         }
 
 
-        4 => {
+        5 => {
             /* -------------------------------------------------------------------------- */
             /*                               INITIALIZE MINT                              */
             /* -------------------------------------------------------------------------- */
@@ -115,7 +129,7 @@ pub fn process_instruction(
             Ok(())            
         }
 
-        5 => {
+        6 => {
             msg!("Mint TOkens");
 
             /* -------------------------------------------------------------------------- */
@@ -146,7 +160,7 @@ pub fn process_instruction(
 
 
 
-        6 => {
+        7 => {
             msg!("Burn TOkens");
 
             /* -------------------------------------------------------------------------- */
@@ -292,16 +306,15 @@ pub fn helper_store_predictions(
     Ok(())
 }
 
-pub fn process_place_bet(
+pub fn process_buy_bet(
     accounts: &[AccountInfo],
     unique_id: [u8; 32],
     outcome_id: u8,
     amount: u64,
-    tx_hex: Vec<u8>,
-    utxo: UtxoMeta,
 ) -> Result<(), ProgramError> {
     let accounts_iter = &mut accounts.iter();
     let event_account = next_account_info(accounts_iter)?;
+    let token_account = next_account_info(accounts_iter)?;
     let better_account = next_account_info(accounts_iter)?;
 
     if !better_account.is_signer {
@@ -309,9 +322,9 @@ pub fn process_place_bet(
     }
 
     let mut events = Predictions::try_from_slice(&event_account.data.borrow())
-        .map_err(|_| ProgramError::InvalidAccountData)?;
+        .map_err(|_| ProgramError::BorshIoError(String::from("No event exists")))?;
 
-    let mut event = events
+    let event = events
         .predictions
         .iter_mut()
         .find(|p| p.unique_id == unique_id)
@@ -321,47 +334,13 @@ pub fn process_place_bet(
         return Err(ProgramError::BorshIoError(String::from("Event is closed.")));
     }
 
-    if !validate_utxo_ownership(better_account.utxo, better_account.key) {
-        return Err(ProgramError::InvalidArgument);
-    }
-
-    if better_account.utxo.clone() != UtxoMeta::from_slice(&[0; 36]) {
-        msg!("UTXO {:?}", better_account.utxo.clone());
-        return Err(ProgramError::BorshIoError(String::from("No UTXO Passed")));
-    }
-
-    let fees_tx: Transaction = consensus::deserialize(&tx_hex).unwrap();
-
-    let mut tx = Transaction {
-        version: Version::TWO,
-        lock_time: LockTime::ZERO,
-        input: vec![],
-        output: vec![],
-    };
-
-    add_state_transition(&mut tx, event_account);
-    tx.input.push(fees_tx.input[0].clone());
-
-    let tx_to_sign = TransactionToSign {
-        tx_bytes: &consensus::serialize(&tx),
-        inputs_to_sign: &[InputToSign {
-            index: 0,
-            signer: event_account.key.clone(),
-        }],
-    };
-
-    msg!("tx_to_sign{:?}", tx_to_sign);
-
-    set_transaction_to_sign(accounts, tx_to_sign);
-
     let bet = Bet {
         user: better_account.key.clone(),
         event_id: event.unique_id,
         outcome_id,
         amount,
-        tx_hex,
-        utxo,
         timestamp: get_bitcoin_block_height() as i64,
+        bet_type: BetType::BUY
     };
 
     let outcome = event
@@ -376,12 +355,79 @@ pub fn process_place_bet(
         // You now have `bets`, which is a mutable reference to `Vec<Bet>`
         bets.push(bet);
     } else {
-        outcome.bets.insert(better_account.key.clone(), vec![bet]);
+        outcome.bets.insert(better_account.key.clone(), vec![bet]).unwrap();
     }
 
     event
         .serialize(&mut *event_account.data.borrow_mut())
         .map_err(|_| ProgramError::InvalidAccountData)?;
 
+    burn_tokens(token_account, better_account.key, amount).unwrap();
+
     Ok(())
 }
+
+
+
+pub fn process_sell_bet(
+    accounts: &[AccountInfo],
+    unique_id: [u8; 32],
+    outcome_id: u8,
+    amount: u64,
+) -> Result<(), ProgramError> {
+    let accounts_iter = &mut accounts.iter();
+    let event_account = next_account_info(accounts_iter)?;
+    let token_account = next_account_info(accounts_iter)?;
+    let better_account = next_account_info(accounts_iter)?;
+
+    if !better_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    let mut events = Predictions::try_from_slice(&event_account.data.borrow())
+        .map_err(|_| ProgramError::InvalidAccountData)?;
+
+    let event = events
+        .predictions
+        .iter_mut()
+        .find(|p| p.unique_id == unique_id)
+        .unwrap();
+
+    if event.status != EventStatus::Active {
+        return Err(ProgramError::BorshIoError(String::from("Event is closed.")));
+    }
+
+    let bet = Bet {
+        user: better_account.key.clone(),
+        event_id: event.unique_id,
+        outcome_id,
+        amount,
+        timestamp: get_bitcoin_block_height() as i64,
+        bet_type: BetType::SELL
+    };
+
+    let outcome = event
+        .outcomes
+        .iter_mut()
+        .find(|outcome| outcome.id == outcome_id)
+        .unwrap();
+
+    let bets: Option<&mut Vec<Bet>> = outcome.bets.get_mut(&better_account.key);
+
+    if let Some(bets) = bets {
+        // You now have `bets`, which is a mutable reference to `Vec<Bet>`
+        bets.push(bet);
+    } else {
+        outcome.bets.insert(better_account.key.clone(), vec![bet]).unwrap();
+    }
+
+    event
+        .serialize(&mut *event_account.data.borrow_mut())
+        .map_err(|_| ProgramError::InvalidAccountData)?;
+
+    mint_tokens(token_account, better_account.key, amount).unwrap();
+
+    Ok(())
+}
+
+

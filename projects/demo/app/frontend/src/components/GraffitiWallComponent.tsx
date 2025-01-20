@@ -300,9 +300,8 @@ const GraffitiWallComponent: React.FC = () => {
         }
       };
 
-
       const data2 = {
-        function_number: 4,
+        function_number: 5,
         owner: Array.from(owner),
         supply,
         ticker,
@@ -332,7 +331,6 @@ const GraffitiWallComponent: React.FC = () => {
       const signature = await wallet.signMessage(Buffer.from(messageHash).toString('hex'));
       // let signature = await window.unisat.signMessage(Buffer.from(messageHash).toString('hex'));
       const signatureBytes = new Uint8Array(Buffer.from(signature, 'base64')).slice(2);
-
 
       const result = await client.sendTransaction({
         version: 0,
@@ -372,9 +370,8 @@ const GraffitiWallComponent: React.FC = () => {
         }
       };
 
-      console.log()
       const data2 = {
-        function_number: 5,
+        function_number: 6,
         uid: uniqueId,
         amount: BigInt(10000),
       };
