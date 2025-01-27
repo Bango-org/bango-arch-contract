@@ -286,7 +286,7 @@ const GraffitiWallComponent: React.FC = () => {
       owner.set(ownerBytes.slice(0, 32));
 
       const supply = BigInt(1000000);
-      const ticker = "PUSD"
+      const ticker = "Bango1T"
       const decimals = 10;
 
 

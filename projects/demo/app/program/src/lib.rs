@@ -103,16 +103,20 @@ pub fn process_instruction(
             // 1 Account : (owned by program, uninitialized)
             msg!("Initializing Mint Account ");
 
-            if accounts.len() != 1 {
+            if accounts.len() != 2 {
                 return Err(ProgramError::Custom(502));
             }
 
             let account = next_account_info(account_iter)?;
 
+            msg!("Initializing Mint Account 2");
+
+
             let initialize_mint_input: InitializeMintInput =
                 borsh::from_slice(&instruction_data[1..])
                     .map_err(|_e| ProgramError::InvalidArgument)?;
 
+                    msg!("Initializing Mint Account 3");
             initialize_mint(account, program_id, initialize_mint_input)?;
             Ok(())
         }
